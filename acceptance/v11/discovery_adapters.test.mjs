@@ -26,6 +26,7 @@ test('Tickerbot normalization preserves optional coverage metadata and explicit 
   assert.equal(out.records[0].sourcePayload.raw_record.ticker, 'ABC');
   assert.equal(out.page.inScopeRows, 16030);
   assert.equal(out.page.signalCoverage.rapid_move_up_5m.null_rows, 3389);
+  assert.equal(out.page.signalCoverageStatus, 'provider_reported');
   assert.equal(out.page.nextCursor, 'opaque-next');
   assert.equal(out.page.complete, false);
   assert.equal(normalizeTickerbotPage({ structuredContent: { ...page.structuredContent, next_cursor: null } }).page.complete, true);
@@ -46,6 +47,7 @@ test('actual Tickerbot scan shape without optional _meta is accepted and page ch
   assert.equal(out.page.safeToCommitPage, true);
   assert.equal(out.page.checkpointCandidate, 'opaque-cursor');
   assert.equal(out.page.inScopeRows, null);
+  assert.equal(out.page.signalCoverageStatus, 'unknown');
   assert.equal(out.page.coverage.countMismatch, false);
 });
 
@@ -82,4 +84,16 @@ test('Exa page coverage does not infer continuation or terminal completeness', (
   assert.equal(intermediate.page.sourceComplete, false);
   const terminal = normalizeExaPage(text, '2026-11-01T20:00:00.000Z', { providerComplete: true });
   assert.equal(terminal.page.sourceComplete, true);
+});
+
+
+test('Tickerbot separates common shares, fund instruments, warrants, rights, and unknown codes', () => {
+  const rows = ['CS', 'ETF', 'WARRANT', 'RIGHT', 'UNLISTED'].map((asset_type, i) => ({ ticker:'T'+i, name:'Instrument '+i, asset_class:'stocks', asset_type }));
+  const result = normalizeTickerbotPage({ structuredContent: {
+    as_of:'2026-11-01T21:03:06.160Z', count:rows.length, next_cursor:null, query:{ q:'ticker IS NOT NULL' }, results:rows,
+  } });
+  assert.deepEqual(result.records.map(r => r.sourcePayload.instrument_classification.instrumentClass),
+    ['common_stock', 'exchange_traded_fund', 'warrant', 'right', null]);
+  assert.equal(result.records.at(-1).sourcePayload.instrument_classification.status, 'unknown_asset_type');
+  assert.equal(result.page.signalCoverageStatus, 'unknown');
 });
