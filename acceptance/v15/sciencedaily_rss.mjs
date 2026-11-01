@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto';
 
+export function assessScienceDailyContinuity(records, priorCursor, currentSnapshotHash) {
+  if (priorCursor == null || priorCursor === '') return { firstSnapshot: true, snapshotChanged: false, boundaryPresent: null, continuityGap: false };
+  let prior;
+  try { prior = typeof priorCursor === 'string' ? JSON.parse(priorCursor) : priorCursor; }
+  catch { throw new Error('invalid_prior_rss_checkpoint'); }
+  if (!prior || prior.version !== 1 || typeof prior.newest_source_event_id !== 'string' || typeof prior.snapshot_sha256 !== 'string') throw new Error('invalid_prior_rss_checkpoint');
+  const boundaryPresent = records.some(record => record.sourceEventId === prior.newest_source_event_id);
+  return { firstSnapshot: false, snapshotChanged: prior.snapshot_sha256 !== currentSnapshotHash, boundaryPresent, continuityGap: !boundaryPresent };
+}
+
 const MAX_XML_BYTES = 1_000_000;
 const MAX_ENTRIES = 100;
 const ALLOWED_HOST = 'www.sciencedaily.com';
