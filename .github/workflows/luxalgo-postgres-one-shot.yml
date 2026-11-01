@@ -41,7 +41,15 @@ jobs:
           test -f vendor/luxalgo/packages/core/src/store/sql-driver.ts
       - name: Install only pinned Node postgres client
         run: npm install --no-save --ignore-scripts --no-audit --no-fund pg@8.16.0
+      - name: Fetch official Supabase root CA for TLS verification
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/supabase-root-ca.crt" \
+            https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
+          grep -Fq -- '-----BEGIN CERTIFICATE-----' "$RUNNER_TEMP/supabase-root-ca.crt"
+          grep -Fq -- '-----END CERTIFICATE-----' "$RUNNER_TEMP/supabase-root-ca.crt"
       - name: Run native driver acceptance (temporary tables only)
         env:
-          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL}}
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node --experimental-strip-types tests/luxalgo_native_pg.mjs
