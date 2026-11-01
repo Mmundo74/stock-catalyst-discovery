@@ -29,8 +29,17 @@ test('SEC duplicate identity is not silently collapsed',()=>{
 });
 test('reject oversize SEC input without attempting parse',()=>assert.throws(()=>parseSecTickerExchange('x'.repeat(12_000_001),{retrievedAt:at}),/oversized/));
 test('ticker feed never invents source timestamp',()=>assert.equal(s().source_timestamp,null));
-test('Nasdaq directory source footer correctly converts EDT to UTC',()=>assert.equal(nas().file_creation_time_utc,'2026-10-30T21:03:00.000Z'));
-test('Nasdaq otherlisted NYSE exchange mapping',()=>assert.equal(other().records[0].exchange,'NYSE'));
+test('Nasdaq directory source footer correctly converts EDT to UTC',()=>assert.equal(nas().file_creation_time_utc,'2026-10-30T21:03:00.000Z'));test('Nasdaq otherlisted NYSE exchange mapping',()=>assert.equal(other().records[0].exchange,'NYSE'));
+test('legacy BATS directory code Z normalizes to SEC CBOE venue',()=>{
+ const secRaw=JSON.stringify({fields:['cik','name','ticker','exchange'],data:[[1002,'Example Beta Corporation','BETA','CBOE']]});
+ const subRaw=JSON.stringify({cik:'0000001002',name:'Example Beta Corporation',tickers:['BETA'],exchanges:['CBOE']});
+ const directoryRaw=get('synthetic_otherlisted.txt').toString().replace('BETA|Example Beta Corporation|N|','BETA|Example Beta Corporation|Z|');
+ const sec=parseSecTickerExchange(secRaw,{retrievedAt:at});
+ const directory=parseNasdaqDirectory(directoryRaw,{retrievedAt:at,directory:'otherlisted',url:'https://nasdaqtrader.com/dynamic/SymDir/otherlisted.txt'});
+ const submissions=parseSecSubmissions(subRaw,{retrievedAt:at,cik:1002});
+ const v=correlateIssuer({ticker:'BETA',sec,directory,submissions,asOf});
+ assert.equal(directory.records[0].exchange,'CBOE');assert.equal(v.status,'cross_correlated');
+});
 test('test issues and ETFs retained as non-eligible flags',()=>{
  const n=nas().records;assert.equal(n.find(x=>x.ticker==='TEST').test_issue,true);assert.equal(n.find(x=>x.ticker==='ETF1').etf,true);
 });
