@@ -16,8 +16,8 @@ export function normalizeExaResults(text, observedAt) {
   }).filter(Boolean);
 }
 
-// Exa rendered results alone do not prove the search was complete. Callers
-// tracking pagination must pass provider-supplied cursor/completion metadata.
+// Exa's rendered result text does not itself prove the search was complete.
+// Callers tracking pagination pass provider-supplied cursor/completion metadata.
 export function normalizeExaPage(text, observedAt, metadata = {}) {
   const records = normalizeExaResults(text, observedAt);
   const page = assessDiscoveryPage({
@@ -31,12 +31,12 @@ export function normalizeExaPage(text, observedAt, metadata = {}) {
   return { records, page };
 }
 
-export function normalizeTickerbotPage(page) {
+export function normalizeTickerbotPage(page, { cursorIn: suppliedCursorIn = null } = {}) {
   const data = page?.structuredContent;
-  if (!data || !Array.isArray(data.results) || !data.query || !data._meta) throw new TypeError('invalid_tickerbot_page');
+  if (!data || !Array.isArray(data.results) || !data.query) throw new TypeError('invalid_tickerbot_page');
   const observedAt = data.as_of;
   if (!Number.isFinite(Date.parse(observedAt))) throw new TypeError('invalid_tickerbot_timestamp');
-  const coverage = data._meta.null_coverage ?? null;
+  const coverage = data._meta?.null_coverage ?? null;
   const records = data.results.map(row => {
     if (!row || typeof row.ticker !== 'string' || typeof row.name !== 'string') return null;
     const raw = { ...row }, fingerprint = hash(JSON.stringify(row));
@@ -48,14 +48,18 @@ export function normalizeTickerbotPage(page) {
   const invalidRows = data.results.length - records.length;
   const providerErrors = Array.isArray(data.errors) ? data.errors.slice() : [];
   if (invalidRows) providerErrors.push('invalid_records:' + invalidRows);
-  const cursorIn = data.cursor_in ?? data.query?.cursor ?? null;
+  const cursorIn = suppliedCursorIn ?? data.cursor_in ?? data.query?.cursor ?? null;
   const cursorOut = data.next_cursor ?? null;
+  const pageCount = Number.isSafeInteger(data.count) ? data.count : null;
   const assessment = assessDiscoveryPage({
     sourceKey: 'tickerbot:market-scan', records, cursorIn, cursorOut,
-    // count may describe the whole query; page_count is explicitly page-local.
-    expectedCount: Number.isSafeInteger(data.page_count) ? data.page_count : null,
-    truncated: data.truncated === true, errors: providerErrors,
-    providerComplete: data.complete === true,
+    expectedCount: pageCount,
+    truncated: data.truncated === true,
+    errors: providerErrors,
+    // Tickerbot documents an explicit null next_cursor as the final page.
+    // An absent field remains unverified and does not claim full coverage.
+    providerComplete: data.complete === true ||
+      (Object.hasOwn(data, 'next_cursor') && data.next_cursor === null),
   });
   return { records, page: { observedAt, count: data.count, nextCursor: cursorOut,
     inScopeRows: coverage?.in_scope_rows ?? null, signalCoverage: coverage?.columns ?? null,
