@@ -42,7 +42,7 @@ try {
  assert.deepEqual(q.rows[0],{e:1,r:1,o:1});report.checks.concurrent_dedup=true;
  q=await a.query(`select e.original_name,e.event_time,e.observed_at,e.source_payload,r.original_payload,o.state,o.attempts,
  p.evidence->'coverage' coverage,cp.cursor_value,pr.status,sh.state health from catalyst_acceptance.events e
- join catalyst_acceptance.event_revisions r using(engine,source,source_event_id) join catalyst_acceptance.notification_outbox o using(engine,source,source_event_id,fingerprint)
+ join catalyst_acceptance.event_revisions r on r.engine=e.engine and r.source=e.source and r.source_event_id=e.source_event_id join catalyst_acceptance.notification_outbox o on o.engine=r.engine and o.source=r.source and o.source_event_id=r.source_event_id and o.fingerprint=r.fingerprint
  join catalyst_acceptance.checkpoints cp on cp.source_key=$3 join catalyst_acceptance.pipeline_runs pr on pr.run_id=cp.last_completed_run
  join catalyst_acceptance.pipeline_runs p on p.run_id=cp.last_completed_run join catalyst_acceptance.source_health sh on sh.source_key=$3
  where e.source=$1 and e.source_event_id=$2`,[src,id,sk]);
