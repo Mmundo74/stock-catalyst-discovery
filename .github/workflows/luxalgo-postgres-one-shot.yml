@@ -93,3 +93,9 @@ jobs:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node --experimental-strip-types tests/luxalgo_native_pg.mjs
+
+      - name: Run durable PostgreSQL persistence and session acceptance
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: node acceptance/v9/postgres_persistence.mjs
