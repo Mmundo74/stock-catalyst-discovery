@@ -54,3 +54,15 @@
 - Downloaded the four committed source/test files through the GitHub read interface into a clean scratch mirror and ran `node --test acceptance/v7/test/*.test.mjs`: **33 passed, 0 failed**.
 - The other issuer, session-calendar, coverage-ledger, and evidence-ledger files remain in the Version 7 package pending compatibility review against the unrecovered earlier source package.
 - Native LuxAlgo one-shot acceptance remains blocked by the absent session-pooler Actions secret and unavailable existing database password. No password reset or production change.
+
+
+## Continuation — 2026-11-01 (credential and acceptance follow-up)
+
+- **Verified role:** `scd_luxalgo_acceptance` exists with LOGIN enabled; SUPERUSER, CREATEDB, CREATEROLE, REPLICATION, and BYPASSRLS are off; it is not a member of `postgres`. The role has no schema CREATE privilege.
+- **Least-privilege grant applied:** USAGE on `catalyst_acceptance`, SELECT on `catalyst_acceptance.events`, and one role-specific RLS SELECT policy on that table. Verified: no INSERT/UPDATE/DELETE on events and no USAGE/SELECT on `catalyst_acceptance_restore`. No application rows were written or changed.
+- **Secret:** GitHub’s Actions settings confirmed `SUPABASE_SESSION_POOLER_URL` exists; its value was never read. Workflow’s nonempty-secret check passed.
+- **Native workflow, run 41333420241:** Manual-only `workflow_dispatch`, `ubuntu-latest`; checkout, Node 22 setup, secret-presence check, pinned LuxAlgo source fetch, and `pg@8.16.0` install passed. Harness failed before database operations with TypeError.
+- **Diagnostics and retry:** Added credential-safe error code/message reporting in commit `a2825897196c3153238be2a4b101d3da736d9593`; redacts any PostgreSQL URI before logging. Retry run 41333557702 failed at connection setup with `ERR_INVALID_URL` / `Invalid URL`. The Actions secret URI needs correction through GitHub’s secure secret editor; neither password nor URI was exposed. The native persistence test therefore remains unpassed.
+- **Issuer regression found and fixed:** V8 mapped Nasdaq Trader other-listed code `Z` to `Cboe`, which fails exact cross-source comparison against SEC `CBOE`. Corrected mapping and added a synthetic SEC/Nasdaq cross-correlation regression in commits `9717dd8a813bbfe337dafe68ca07452e9c1cdc18` and `014f14650e02d14547c2588ca7d85363d549a382`. Combined V7+V8 scratch mirror run: **157 passed, 0 failed**. Separately reran the earlier issuer package: **90 passed, 0 failed**. Tests remain offline/synthetic.
+- **Concurrency limitation:** The Supabase SQL connector serialized concurrent requests in the previous probe. Independent PostgreSQL-session overlap, durable DB outbox/recovery acceptance, source continuity, live SEC/Nasdaq compatibility, end-to-end alerts, and all three production collectors remain unverified.
+- **Preserved:** The existing repository, manual-only workflow, both isolated schemas and prior rows, all three discovery-engine mission, and existing Make/Brevo/Gmail/ChatGPT notification route. No recurring work, production collection, notification, paid service, or trading was activated.
