@@ -274,3 +274,10 @@
 - Existing workflow run [#26](https://github.com/Mmundo74/stock-catalyst-discovery/actions/runs/41356462923), ID `41356462923`, ran via `workflow_dispatch` on standard `ubuntu-latest`. Native LuxAlgo and independent-session PostgreSQL acceptance, durable Fed ingestion, previous news/market, coverage, outbox, qualification, Make mock, and ScienceDaily tests/ingestion passed. GDELT unit tests passed **7/7**.
 - GDELT live retrieval failed with HTTP 429 (run step 23). `source_health` durably records `news:gdelt_doc_catalysts` as `error`, `last_error=gdelt_http_429`; no GDELT event or outbox records were written and no checkpoint advanced. This is a provider request-limit result, not a database failure. GDELT’s official guidance describes DOC API rate limiting and points high-volume users to bulk Web NGrams data, which does not provide raw article evidence for this use. The GDELT article adapter remains available but is not live-verified.
 - No alert backlog or external notifications were sent. No schedule, paid service, or production collection was activated.
+
+
+## GDELT bounded retry update — 2026-11-01
+
+- Added a single retry only for HTTP 429, honors `Retry-After`, and caps wait at 60 seconds; all other errors still fail closed and retain the error source-health state. Regression tests cover retry success and exceeding the time bound.
+- Commits: retry logic `3511336`; regression tests `4ebb9f7`. Local full test suite: **224 passed, 0 failed**.
+- The hosted retry change has not yet been run. GDELT DOC remains rate-limited in hosted use and is not operational; Exa and ScienceDaily remain independent news sources.
