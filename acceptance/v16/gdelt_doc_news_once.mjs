@@ -43,7 +43,8 @@ try{
   events_and_revisions_durable:true,raw_discoveries_not_queued:true,no_checkpoint_without_continuation:true},coverage}));
 }catch(error){
  if(transaction) await client.query('ROLLBACK').catch(()=>{});
- const code=error?.message?.startsWith('gdelt_http_')?error.message:(error?.code&&/^[A-Z0-9]{2,10}$/.test(error.code)?error.code:'GDELT_INGESTION_FAILED');
+ const safeAdapterCode=/^gdelt_(?:http_\d+|request_timeout|request_failed)$/.test(error?.message??'');
+ const code=safeAdapterCode?error.message:(typeof error?.code==='string'&&/^[A-Z][A-Z0-9_]{1,24}$/.test(error.code)?error.code:'GDELT_INGESTION_FAILED');
  if(connected) await client.query(`INSERT INTO catalyst_acceptance.source_health(source_key,last_attempt_at,state,last_error)
   VALUES($1,now(),'error',$2) ON CONFLICT(source_key) DO UPDATE SET last_attempt_at=now(),state='error',last_error=EXCLUDED.last_error`,[sourceKey,code]).catch(()=>{});
  console.error(JSON.stringify({pass:false,error_code:code,checkpoint_advanced:false})); process.exitCode=1;
