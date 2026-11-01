@@ -134,3 +134,7 @@ jobs:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node acceptance/v13/qualification_persistence_acceptance.mjs
+
+
+      - name: Test opt-in idempotent Make notification adapter (mock transport only)
+        run: node --test acceptance/v14/make_delivery_adapter.test.mjs
