@@ -124,3 +124,13 @@ jobs:
 
       - name: Test outbox worker input and lease safeguards
         run: node --test acceptance/v12/outbox_worker.test.mjs
+
+
+      - name: Test research qualification stage and fail-closed evidence rules
+        run: node --test acceptance/v13/research_qualification.test.mjs
+
+      - name: Test durable research qualification persistence (transaction rolls back)
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: node acceptance/v13/qualification_persistence_acceptance.mjs
