@@ -65,7 +65,7 @@ try {
  const crash=await open(),cr=tag+'_crash',ci=tag+'_crash_event';await crash.query('begin');
  await crash.query("insert into catalyst_acceptance.pipeline_runs(run_id,engine,status,evidence) values($1,'government','started',$2)",[cr,{fixture:tag}]);
  await crash.query(`insert into catalyst_acceptance.events(engine,source,source_event_id,original_name,event_time,observed_at,fingerprint,source_payload)
-  values('government',$1,$2,'interrupted',$3,$3,'sha256:crash',$4)`,[src,ci,ts,raw]);crash.connection.stream.destroy();
+  values('government',$1,$2,'interrupted',$3,$3,'sha256:crash',$4)`,[src,ci,ts,raw]);crash.on('error',()=>{});crash.connection.stream.destroy();
  await new Promise(r=>setTimeout(r,300));const recovered=await open();q=await recovered.query(`select
  (select count(*)::int from catalyst_acceptance.events where source=$1 and source_event_id=$2) e,
  (select count(*)::int from catalyst_acceptance.pipeline_runs where run_id=$3) r,(select cursor_value from catalyst_acceptance.checkpoints where source_key=$4) c`,[src,ci,cr,sk]);
