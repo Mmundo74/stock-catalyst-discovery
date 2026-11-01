@@ -33,3 +33,13 @@
 - The transaction model and coverage checks remain synthetic/offline. They do not prove live PostgreSQL transactions, independent-session concurrency, real-source continuity, or external notification delivery.
 - The updated package is not yet integrated into this repository. Existing GitHub connector writes were rejected; the browser editor supports text edits but cannot select the local archive for upload.
 - **Preserved:** Existing repository files, manual LuxAlgo workflow, Supabase data/schemas, three-engine mission, Make/Brevo/Gmail/ChatGPT alerts. No production activation or database mutation. The existing Actions secret remains unavailable, and the database password was not reset.
+
+
+## Repository integration follow-up — 2026-11-01
+
+- Added `acceptance/v7/src/source_recovery_gate.mjs` and its tests, including the six Version 7 fail-closed coverage-shape regressions.
+- Added `acceptance/v7/src/transaction_acceptance_model.mjs` and its tests as an offline reference model.
+- Updated the README with the test command and explicit limits. These selected files are isolated under `acceptance/v7`; they do not replace or connect to any production collector or database code.
+- Downloaded the four committed source/test files through the GitHub read interface into a clean scratch mirror and ran `node --test acceptance/v7/test/*.test.mjs`: **33 passed, 0 failed**.
+- The other issuer, session-calendar, coverage-ledger, and evidence-ledger files remain in the Version 7 package pending compatibility review against the unrecovered earlier source package.
+- Native LuxAlgo one-shot acceptance remains blocked by the absent session-pooler Actions secret and unavailable existing database password. No password reset or production change.
