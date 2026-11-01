@@ -85,3 +85,13 @@
 - **Role and data:** The restricted role remains LOGIN-only without elevated flags. No original password was reset. Both failures occurred before database operations; no test SQL ran and no rows changed.
 - **Offline tests rerun separately:** V8 123/0, V7 122/0, earlier issuer package 90/0, repository V7 helpers 33/0. Synthetic/offline results do not establish live collection, independent-session concurrency, or alert delivery.
 - **Blocker:** The dedicated role password must match the URL-encoded password in the existing GitHub secret. No permissions were broadened to bypass authentication.
+
+
+## Credential acceptance and workflow preflight — 2026-11-01
+
+- **Verified failure:** Run #6 (ID `41341446697`, started `19:22:57Z`) failed with PostgreSQL `28P01` during connection authentication, before any SQL or test-table operation. Its head commit was `72edf55dcd71b8593a1d9261706d4dec31cd78fb`.
+- **Timing limit:** GitHub shows the Actions secret last updated at `19:22 PM GMT` to minute precision, the same minute as run #6; that metadata cannot establish whether the updated value preceded that run. Run #6 proves a credential mismatch at connection time, but not whether it consumed the prior or updated secret.
+- **Correction:** Added a bounded URL and database-authentication preflight to the existing manual-only workflow. It verifies expected session-pooler URL fields without printing the URL or password, then queries only the connected role and database. TLS certificate and hostname verification remain enabled with the published Supabase root CA.
+- **Live acceptance PASS:** Run #7 (`41344326171`) on commit `3be60f5ca8b1a3e4288095f0dd8c889e9678e32f`: endpoint, username-format, and SSL checks all true; `role_ok:true`; `database_ok:true`. Pinned LuxAlgo native checks passed: parameter conversion, connection, insert, upsert, rollback, commit, reconnect, and existing-evidence read.
+- **Role-state correction:** A fresh catalog query shows `scd_luxalgo_acceptance` currently has LOGIN plus CREATEDB, CREATEROLE, REPLICATION, and BYPASSRLS enabled; SUPERUSER is false. This supersedes earlier changelog statements that these flags were disabled. No role flags, schema ACLs, or data were changed during this continuation.
+- **Remaining limits:** The harness uses temporary-table operations and reads `catalyst_acceptance.events`; it does not validate independent-session concurrency, durable application writes to event/revision/checkpoint/outbox tables, schema confinement for a BYPASSRLS role, production collection, or external alert delivery. The three engines are not operational.
