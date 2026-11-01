@@ -289,3 +289,10 @@
 - Updated the adapter timeout to 30 seconds and map timeout/network exceptions to stable non-sensitive codes. Preserved the single Retry-After retry and its 60-second ceiling. Updated the runner to accept only known adapter codes and string PostgreSQL codes.
 - Added regression tests for Node timeout normalization and sanitized generic network failures. Local GDELT tests: 11 passed, 0 failed. Full `node --test $(find acceptance tests -name '*.test.mjs' -print | sort)`: 226 passed, 0 failed. `git diff --check`: passed.
 - Hosted rerun is pending. This does not establish that GDELT is currently reachable. Existing Exa/ScienceDaily, three discovery engines, acceptance schemas, and notification infrastructure are preserved; no alert delivery, recurring scan, or production activation occurred.
+
+
+## Hosted GDELT retry result — 2026-11-01
+
+- Existing manual-only workflow run #28 (`41357276765`) ran on commit `c5998650dd6ce0b9467761f1415a79e7a02ee534`. Native LuxAlgo, independent-session PostgreSQL, Fed ingestion, news/market and coverage tests, outbox/research safeguards, mock-only Make, ScienceDaily ingestion, and all 11 GDELT adapter tests passed. The bounded live GDELT call failed after its one retry with `gdelt_http_429`.
+- Read-only Supabase audit confirms source health `error/gdelt_http_429`, 0 GDELT events, 0 revisions, 0 outbox rows, and 0 GDELT checkpoints. This confirms the rate limit persisted; there was no silent checkpoint advance or notification. Fed is healthy at 135 records / next offset 135; ScienceDaily remains healthy with its bounded snapshot.
+- Timeout normalization and retry changes are implemented and covered by 226 local tests (0 failures), and the hosted GDELT unit suite passed 11/11. The external GDELT source remains not live-verified because of provider rate limiting. No further GDELT retry was issued. Production and recurring workloads remain inactive.
