@@ -1,0 +1,1 @@
+Version 14 adds a controlled notification adapter. Live Make delivery remains disabled until a secured webhook endpoint and explicit delivery opt-in are configured. See notification_delivery.mjs and notification_delivery.test.mjs.
