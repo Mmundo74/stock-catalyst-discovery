@@ -1,6 +1,5 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { normalizeScienceDailyRss, fetchScienceDailyRss } from './sciencedaily_rss.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';
+import { assessScienceDailyContinuity, normalizeScienceDailyRss, fetchScienceDailyRss } from './sciencedaily_rss.mjs';
 
 const sample = '<?xml version="1.0"?><rss version="2.0"><channel><title>ScienceDaily</title><item><title>New &amp; useful discovery</title><link>https://www.sciencedaily.com/releases/2026/11/261101120000.htm</link><guid isPermaLink="false">sd-1</guid><pubDate>Sun, 01 Nov 2026 12:00:00 GMT</pubDate><description><![CDATA[A short <b>summary</b>.]]></description></item></channel></rss>';
 
@@ -37,4 +36,22 @@ test('bounded fetch checks status and content type with injectable transport', a
   assert.equal(got.records.length, 1);
   await assert.rejects(fetchScienceDailyRss({ fetchImpl: async () => new Response('bad', { status: 503 }) }), /feed_http_503/);
   await assert.rejects(fetchScienceDailyRss({ fetchImpl: async () => new Response(sample, { status: 200, headers: { 'content-type': 'text/html' } }) }), /unexpected_feed_content_type/);
+});
+
+
+test('changed snapshots preserve continuity when the prior boundary remains visible', () => {
+  const prior = JSON.stringify({ version: 1, newest_source_event_id: 'https://www.sciencedaily.com/releases/boundary', snapshot_sha256: 'old' });
+  const result = assessScienceDailyContinuity([{ sourceEventId: 'https://www.sciencedaily.com/releases/boundary' }], prior, 'new');
+  assert.deepEqual(result, { firstSnapshot: false, snapshotChanged: true, boundaryPresent: true, continuityGap: false });
+});
+
+test('a missing prior boundary records a gap and blocks checkpoint advancement', () => {
+  const prior = { version: 1, newest_source_event_id: 'https://www.sciencedaily.com/releases/evicted', snapshot_sha256: 'old' };
+  const result = assessScienceDailyContinuity([{ sourceEventId: 'https://www.sciencedaily.com/releases/new' }], prior, 'new');
+  assert.deepEqual(result, { firstSnapshot: false, snapshotChanged: true, boundaryPresent: false, continuityGap: true });
+});
+
+test('an invalid prior checkpoint fails closed and a first snapshot is accepted', () => {
+  assert.deepEqual(assessScienceDailyContinuity([], null, 'first'), { firstSnapshot: true, snapshotChanged: false, boundaryPresent: null, continuityGap: false });
+  assert.throws(() => assessScienceDailyContinuity([], '{bad json', 'new'), /invalid_prior_rss_checkpoint/);
 });
