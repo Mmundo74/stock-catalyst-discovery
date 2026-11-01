@@ -138,3 +138,13 @@ jobs:
 
       - name: Test opt-in idempotent Make notification adapter (mock transport only)
         run: node --test acceptance/v14/make_delivery_adapter.test.mjs
+
+
+      - name: Test independent ScienceDaily RSS source adapter
+        run: node --test acceptance/v15/sciencedaily_rss.test.mjs
+
+      - name: Run bounded live ScienceDaily RSS snapshot ingestion
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: node acceptance/v15/sciencedaily_rss_once.mjs
