@@ -48,3 +48,26 @@ export function normalizeFedItem(raw, feedType, feedUrl, retrievedAt) {
   const url=/^https?:\/\//i.test(link)?link:`https://www.federalreserve.gov${link.startsWith('/')?'':'/'}${link}`;
   return {id,type,title,eventTime:easternTimestampToIso(sourceTimestamp),sourceTimestamp,url,feedUrl,retrievedAt,fingerprint:createHash('sha256').update(JSON.stringify(raw)).digest('hex')};
 }
+
+
+export function normalizeBoundedFeeds(feeds, retrievedAt, maxRecords) {
+  const available = feeds.reduce((n, feed) => n + feed.items.length, 0);
+  const inScopeAvailable = feeds.reduce((n, feed, i) => n + feed.items.filter(raw => FEEDS[i].type !== null || raw.pt === 'Monetary Policy').length, 0);
+  const records = [];
+  let processed = 0, parseFailures = 0, outOfScopeProcessed = 0;
+  for (let i = 0; i < feeds.length && processed < maxRecords; i++) {
+    const feed = feeds[i];
+    for (const raw of feed.items) {
+      if (processed >= maxRecords) break;
+      processed += 1;
+      try {
+        const normalized = normalizeFedItem(raw, FEEDS[i].type, feed.url, retrievedAt);
+        if (normalized) records.push({ raw, feedUrl: feed.url, ...normalized });
+        else outOfScopeProcessed += 1;
+      } catch {
+        parseFailures += 1;
+      }
+    }
+  }
+  return { records, coverage: { recordsAvailable: available, recordsInScopeAvailable: inScopeAvailable, recordsProcessed: processed, recordsSelected: records.length, recordsOutOfScopeProcessed: outOfScopeProcessed, parseFailures, complete: processed === available && parseFailures === 0 } };
+}
