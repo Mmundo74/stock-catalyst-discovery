@@ -107,3 +107,6 @@ jobs:
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
           LUXALGO_MAX_ITEMS: '9'
         run: node acceptance/v10/luxalgo_federalreserve_once.mjs
+
+      - name: Test independent news and market adapter normalization
+        run: node --test acceptance/v11/discovery_adapters.test.mjs
