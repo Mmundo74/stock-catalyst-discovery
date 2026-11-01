@@ -7,3 +7,6 @@ The bounded one-shot importer stores at most 60 entries in the existing `catalys
 The manual hosted workflow tests normalization and fetches one bounded live snapshot. Offline fixtures and one live fetch do not establish unattended operation or complete news coverage.
 
 ScienceDaily's official [RSS newsfeeds](https://www.sciencedaily.com/newsfeeds.htm) are free. Its [terms](https://www.sciencedaily.com/terms.htm) require attribution and limit RSS use to headlines and brief summaries with links.
+
+
+Continuity safeguard: each run compares the durable prior cursor with the current 60-entry window. It records snapshot-hash changes and verifies that the previous newest article remains in the window. If that boundary has rolled out, it still persists the observed entries but marks source health degraded, leaves the checkpoint unchanged, and fails the workflow so a coverage gap is visible instead of silently skipped.
