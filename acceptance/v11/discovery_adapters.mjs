@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { assessDiscoveryPage } from './coverage_gate.mjs';
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 export function normalizeExaResults(text, observedAt) {
@@ -15,6 +16,21 @@ export function normalizeExaResults(text, observedAt) {
   }).filter(Boolean);
 }
 
+// Exa rendered results alone do not prove the search was complete. Callers
+// tracking pagination must pass provider-supplied cursor/completion metadata.
+export function normalizeExaPage(text, observedAt, metadata = {}) {
+  const records = normalizeExaResults(text, observedAt);
+  const page = assessDiscoveryPage({
+    sourceKey: 'exa:independent-news', records,
+    cursorIn: metadata.cursorIn ?? null, cursorOut: metadata.cursorOut ?? null,
+    expectedCount: metadata.expectedCount ?? null,
+    truncated: metadata.truncated === true,
+    errors: Array.isArray(metadata.errors) ? metadata.errors : [],
+    providerComplete: metadata.providerComplete === true,
+  });
+  return { records, page };
+}
+
 export function normalizeTickerbotPage(page) {
   const data = page?.structuredContent;
   if (!data || !Array.isArray(data.results) || !data.query || !data._meta) throw new TypeError('invalid_tickerbot_page');
@@ -29,7 +45,21 @@ export function normalizeTickerbotPage(page) {
       eventTime: observedAt, observedAt, fingerprint,
       sourcePayload: { provider: 'Tickerbot', observed_at: observedAt, query: data.query, raw_record: raw } };
   }).filter(Boolean);
-  return { records, page: { observedAt, count: data.count, nextCursor: data.next_cursor ?? null,
+  const invalidRows = data.results.length - records.length;
+  const providerErrors = Array.isArray(data.errors) ? data.errors.slice() : [];
+  if (invalidRows) providerErrors.push('invalid_records:' + invalidRows);
+  const cursorIn = data.cursor_in ?? data.query?.cursor ?? null;
+  const cursorOut = data.next_cursor ?? null;
+  const assessment = assessDiscoveryPage({
+    sourceKey: 'tickerbot:market-scan', records, cursorIn, cursorOut,
+    // count may describe the whole query; page_count is explicitly page-local.
+    expectedCount: Number.isSafeInteger(data.page_count) ? data.page_count : null,
+    truncated: data.truncated === true, errors: providerErrors,
+    providerComplete: data.complete === true,
+  });
+  return { records, page: { observedAt, count: data.count, nextCursor: cursorOut,
     inScopeRows: coverage?.in_scope_rows ?? null, signalCoverage: coverage?.columns ?? null,
-    complete: !data.next_cursor && !data.truncated } };
+    safeToCommitPage: assessment.safeToCommitPage,
+    checkpointCandidate: assessment.checkpointCandidate,
+    coverage: assessment, complete: assessment.sourceComplete } };
 }
