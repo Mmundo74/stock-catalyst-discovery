@@ -1,6 +1,5 @@
 import pg from 'pg';
-import { randomUUID } from 'node:crypto';
-import { fetchScienceDailyRss } from './sciencedaily_rss.mjs';
+import { randomUUID } from 'node:crypto';import { assessScienceDailyContinuity, fetchScienceDailyRss } from './sciencedaily_rss.mjs';
 
 const connectionString = process.env.SUPABASE_SESSION_POOLER_URL;
 if (!connectionString) throw new Error('missing_database_url');
@@ -16,8 +15,11 @@ function safeErrorCode(error) {
 }
 try {
   await client.connect(); connected = true;
+  const checkpointResult = await client.query('select cursor_value from catalyst_acceptance.checkpoints where source_key=$1', [sourceKey]);
+  const priorCursor = checkpointResult.rows[0]?.cursor_value ?? null;
   const batch = await fetchScienceDailyRss({ observedAt: new Date().toISOString(), maxEntries: 60 });
   if (!batch.records.length || batch.records.length > 60) throw new Error('invalid_feed_snapshot_size');
+  const continuity = assessScienceDailyContinuity(batch.records, priorCursor, batch.page.snapshotHash);
   await client.query('BEGIN'); tx = true;
   await client.query('insert into catalyst_acceptance.pipeline_runs(run_id,engine,status,evidence) values($1,$2,\'started\',$3::jsonb)',
     [runId, engine, JSON.stringify({ source, stage: 'rss-snapshot', bounded: true })]);
@@ -32,12 +34,13 @@ try {
     insertedRevisions += revision.rowCount ?? 0;
   }
   const coverage = { ...batch.page, fetchedRecords: batch.records.length, insertedEvents, insertedRevisions,
-    checkpointAdvancedAfterDurability: true, sourceComplete: false, paginationExposed: false, notificationEligible: false };
+    ...continuity, checkpointAdvancedAfterDurability: !continuity.continuityGap, sourceComplete: false, paginationExposed: false, notificationEligible: false };
   await client.query('update catalyst_acceptance.pipeline_runs set status=\'committed\',completed_at=now(),evidence=$2::jsonb where run_id=$1', [runId,JSON.stringify({ source, coverage })]);
-  await client.query('insert into catalyst_acceptance.checkpoints(source_key,cursor_value,last_completed_run) values($1,$2,$3) on conflict(source_key) do update set cursor_value=excluded.cursor_value,last_completed_run=excluded.last_completed_run,advanced_at=now()', [sourceKey,batch.page.nextCursor,runId]);
-  await client.query('update catalyst_acceptance.source_health set last_success_at=now(),state=\'healthy\',last_error=null where source_key=$1', [sourceKey]);
+  if (!continuity.continuityGap) {
+    await client.query('insert into catalyst_acceptance.checkpoints(source_key,cursor_value,last_completed_run) values($1,$2,$3) on conflict(source_key) do update set cursor_value=excluded.cursor_value,last_completed_run=excluded.last_completed_run,advanced_at=now()', [sourceKey,batch.page.nextCursor,runId]);  }
+  await client.query('update catalyst_acceptance.source_health set last_success_at=now(),state=$2,last_error=$3 where source_key=$1', [sourceKey, continuity.continuityGap ? 'degraded' : 'healthy', continuity.continuityGap ? 'RSS_CHECKPOINT_GAP' : null]);
   await client.query('COMMIT'); tx = false;
-  console.log(JSON.stringify({ pass:true,run_id:runId,source,checks:{ durable_events:true,durable_revisions:true,checkpoint_after_durability:true,raw_not_queued:true,source_health_recorded:true },coverage }));
+  console.log(JSON.stringify({ pass:!continuity.continuityGap,run_id:runId,source,checks:{ durable_events:true,durable_revisions:true,checkpoint_after_durability:!continuity.continuityGap,raw_not_queued:true,source_health_recorded:true },coverage }));if (continuity.continuityGap) process.exitCode = 1;
 } catch (error) {
   if (tx) await client.query('ROLLBACK').catch(() => {});
   const errorCode = safeErrorCode(error);
