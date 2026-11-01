@@ -35,8 +35,16 @@ test('raw and research-qualified items are rejected before delivery',async()=>{
 test('event identity mismatch and duplicate evidence block delivery',()=>{
   assert.throws(()=>buildMakeAlertPayload({item,qualification:qualification({source_event_id:'other'})}),/qualification_event_mismatch/);
   const q=qualification(); q.supporting_evidence[1].url=q.supporting_evidence[0].url;
-  assert.throws(()=>buildMakeAlertPayload({item,qualification:q}),/independent_evidence_required/);
+  assert.throws(()=>buildMakeAlertPayload({item,qualification:q}),/independent_evidence_required/);});
+
+test('same publisher URLs are rejected before Make delivery',()=>{
+ const q=qualification();
+ q.supporting_evidence[0]={...q.supporting_evidence[0],sourceName:'Publisher',url:'https://www.publisher.example/a'};
+ q.supporting_evidence[1]={...q.supporting_evidence[1],sourceName:'Publisher',url:'https://publisher.example/b'};
+ assert.throws(()=>buildMakeAlertPayload({item,qualification:q}),/independent_evidence_required/);
 });
+
+
 
 test('live delivery requires separate environment opt-in and HTTPS',async()=>{
   const prior=process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;
