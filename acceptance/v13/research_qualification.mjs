@@ -5,9 +5,26 @@ const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
 function assertEvent(event) {
   if (!event || !['government', 'news', 'market'].includes(event.engine) ||
       !event.source || !event.sourceEventId || !event.fingerprint || !sha(event.fingerprint)) {
-    throw new TypeError('invalid_event_reference');
-  }
+    throw new TypeError('invalid_event_reference');  }
 }
+
+export function isIndependentEvidence(items) {
+  if (!Array.isArray(items) || items.length < 2) return false;
+  const hosts = [];
+  const sourceNames = [];
+  try {
+    for (const item of items) {
+      const host = new URL(item.url).hostname.toLowerCase().replace(/^www\./, '');
+      const sourceName = String(item.sourceName ?? '').trim().toLowerCase();
+      if (!host || !sourceName) return false;
+      hosts.push(host);
+      sourceNames.push(sourceName);
+    }
+  } catch { return false; }
+  return new Set(hosts).size === items.length && new Set(sourceNames).size === items.length;
+}
+
+
 
 function preserveEvidence(items) {
   if (!Array.isArray(items) || items.length === 0) throw new TypeError('supporting_evidence_required');
@@ -78,7 +95,8 @@ export function qualifyDiscovery({ event, issuerResolution, parentRelationship =
   const reviewed = humanReview && humanReview.approved === true &&
     typeof humanReview.reviewerId === 'string' && humanReview.reviewerId.trim() &&
     ISO(humanReview.reviewedAt) && humanReview.reviewedAt <= new Date().toISOString();
-  const alertEligible = Boolean(issuer && impact && reviewed && supportingEvidence.length >= 2 &&
+  const independentEvidence = isIndependentEvidence(supportingEvidence);
+  const alertEligible = Boolean(issuer && impact && reviewed && independentEvidence &&
     parent.status !== 'requires_review' && parent.status !== 'unknown');
   return Object.freeze({
     event: Object.freeze({ engine: event.engine, source: event.source,
@@ -98,7 +116,7 @@ export function qualifyDiscovery({ event, issuerResolution, parentRelationship =
       ...(!issuer ? ['issuer_not_uniquely_cross_correlated'] : []),
       ...(!impact ? ['impact_assessment_incomplete'] : []),
       ...(!reviewed ? ['explicit_human_review_required'] : []),
-      ...(supportingEvidence.length < 2 ? ['two_independent_evidence_items_required'] : []),
+      ...(!independentEvidence ? ['two_independent_evidence_items_required'] : []),
       ...(['requires_review', 'unknown'].includes(parent.status) ? ['parent_relationship_unresolved'] : []),
     ],
   });
