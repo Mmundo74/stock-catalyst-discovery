@@ -1,0 +1,5 @@
+Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares
+ALPA|Example Alpha, Inc.|Q|N|N|100|N|N
+TEST|Exchange QA Test|Q|Y|N|100|N|N
+ETF1|Exchange Sample Fund|G|N|N|100|Y|N
+File Creation Time: 1030202617:03|||||||

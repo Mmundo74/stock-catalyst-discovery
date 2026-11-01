@@ -1,0 +1,5 @@
+ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol
+BETA|Example Beta Corporation|N|BETA|N|100|N|BETA
+MULT.A|Example Multi-Class Inc Class A|N|MULT.A|N|100|N|MULT.A
+MULT.B|Example Multi-Class Inc Class B|N|MULT.B|N|100|N|MULT.B
+File Creation Time: 1030202617:03|||||||
