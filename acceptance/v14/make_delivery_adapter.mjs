@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { acknowledgeOutboxItem, releaseOutboxItem } from '../v12/outbox_worker.mjs';
+import { isIndependentEvidence } from '../v13/research_qualification.mjs';
 
 const isSha256 = value => typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
 const isHttps = value => typeof value === 'string' && /^https:\/\//i.test(value);
@@ -21,7 +22,7 @@ function requireEligible(item, qualification) {
   if (qualification.review?.approved !== true || !qualification.impact_assessment) throw new Error('review_and_impact_required');
   const evidence = qualification.supporting_evidence;
   if (!Array.isArray(evidence) || evidence.length < 2 || evidence.some(x => !isHttps(x?.url) || !isSha256(x?.sha256)) ||
-      new Set(evidence.map(x => x.url)).size !== evidence.length ||
+      !isIndependentEvidence(evidence) || new Set(evidence.map(x => x.url)).size !== evidence.length ||
       new Set(evidence.map(x => x.sha256.toLowerCase())).size !== evidence.length) {
     throw new Error('independent_evidence_required');
   }
