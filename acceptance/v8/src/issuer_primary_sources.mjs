@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 export const SEC_EXCHANGE_URL = 'https://www.sec.gov/files/company_tickers_exchange.json';
 export const SEC_SUBMISSION_BASE = 'https://data.sec.gov/submissions/CIK';
 export const NASDAQ_DIRECTORY_DEFINITIONS = 'https://www.nasdaqtrader.com/Trader.aspx?id=SymbolDirDefs';
-const OTHER_LISTED_CODES = Object.freeze({ N: 'NYSE', A: 'NYSE American', P: 'NYSE Arca', Z: 'Cboe', V: 'IEX' });
+const OTHER_LISTED_CODES = Object.freeze({ N: 'NYSE', A: 'NYSE American', P: 'NYSE Arca', Z: 'CBOE', V: 'IEX' });
 const iso = value => typeof value === 'string' && !Number.isNaN(Date.parse(value)) && /^\d{4}-\d\d-\d\dT/.test(value);
 const timestamp = value => {
   if (!iso(value)) throw new Error('invalid_retrieved_at');
