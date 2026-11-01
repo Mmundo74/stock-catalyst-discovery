@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeExaResults, normalizeTickerbotPage } from './discovery_adapters.mjs';
+import { normalizeExaResults, normalizeExaPage, normalizeTickerbotPage } from './discovery_adapters.mjs';
 
 test('Exa normalization is ticker independent and retains provider labels/raw evidence', () => {
   const observed = '2026-11-01T20:00:00.000Z';
-  const result = normalizeExaResults(`Title: Global science briefing\nURL: https://example.org/story\nPublished: N/A\nAuthor: Example Desk\nHighlights:\n- Research update`, observed);
+  const result = normalizeExaResults(['Title: Global science briefing','URL: https://example.org/story','Published: N/A','Author: Example Desk','Highlights:','- Research update'].join('\n'), observed);
   assert.equal(result.length, 1);
   assert.equal(result[0].engine, 'news');
   assert.equal(result[0].eventTime, observed);
   assert.equal(result[0].sourcePayload.published_label, 'N/A');
   assert.match(result[0].sourcePayload.rendered_result, /Research update/);
-  assert.equal(normalizeExaResults(`Title: broken\nURL: javascript:alert(1)\nPublished: today`, observed).length, 0);
+  assert.equal(normalizeExaResults(['Title: broken','URL: javascript:alert(1)','Published: today'].join('\n'), observed).length, 0);
 });
 
 test('Tickerbot normalization preserves query/cursor and explicit null coverage', () => {
@@ -27,9 +27,41 @@ test('Tickerbot normalization preserves query/cursor and explicit null coverage'
   assert.equal(out.page.signalCoverage.rapid_move_up_5m.null_rows, 3389);
   assert.equal(out.page.nextCursor, 'opaque-next');
   assert.equal(out.page.complete, false);
-  assert.equal(normalizeTickerbotPage({ structuredContent: { ...page.structuredContent, next_cursor: null } }).page.complete, true);
+  assert.equal(normalizeTickerbotPage({ structuredContent: { ...page.structuredContent, next_cursor: null } }).page.complete, false);
 });
 
 test('Tickerbot rejects structurally incomplete provider responses', () => {
   assert.throws(() => normalizeTickerbotPage({ structuredContent: { results: [] } }), /invalid_tickerbot_page/);
+});
+
+test('Tickerbot page gate advances valid intermediate pages and requires explicit terminal confirmation', () => {
+  const base = { as_of: '2026-11-01T20:37:25.770Z', count: 1, query: { q: 'broad scan', limit: 1 }, _meta: {}, results: [{ ticker: 'ABC', name: 'Example Corp' }] };
+  const intermediate = normalizeTickerbotPage({ structuredContent: { ...base, next_cursor: 'c2' } });
+  assert.equal(intermediate.page.safeToCommitPage, true);
+  assert.equal(intermediate.page.checkpointCandidate, 'c2');
+  assert.equal(intermediate.page.complete, false);
+  const unconfirmedTerminal = normalizeTickerbotPage({ structuredContent: { ...base, next_cursor: null } });
+  assert.equal(unconfirmedTerminal.page.safeToCommitPage, true);
+  assert.equal(unconfirmedTerminal.page.complete, false);
+  const terminal = normalizeTickerbotPage({ structuredContent: { ...base, next_cursor: null, complete: true } });
+  assert.equal(terminal.page.complete, true);
+});
+
+test('Tickerbot blocks checkpoint after malformed provider rows', () => {
+  const result = normalizeTickerbotPage({ structuredContent: {
+    as_of: '2026-11-01T20:37:25.770Z', count: 2, next_cursor: 'next', query: { q: 'broad scan' }, _meta: {},
+    results: [{ ticker: 'ABC', name: 'Example Corp' }, { ticker: 7, name: 'bad ticker' }],
+  } });
+  assert.equal(result.records.length, 1);
+  assert.equal(result.page.safeToCommitPage, false);
+  assert.equal(result.page.checkpointCandidate, null);
+});
+
+test('Exa page coverage does not infer continuation or terminal completeness', () => {
+  const text = ['Title: Science result','URL: https://example.org/a','Published: N/A'].join('\n');
+  const intermediate = normalizeExaPage(text, '2026-11-01T20:00:00.000Z', { cursorIn: '1', cursorOut: '2' });
+  assert.equal(intermediate.page.checkpointCandidate, '2');
+  assert.equal(intermediate.page.sourceComplete, false);
+  const terminal = normalizeExaPage(text, '2026-11-01T20:00:00.000Z', { providerComplete: true });
+  assert.equal(terminal.page.sourceComplete, true);
 });
