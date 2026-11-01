@@ -281,3 +281,11 @@
 - Added a single retry only for HTTP 429, honors `Retry-After`, and caps wait at 60 seconds; all other errors still fail closed and retain the error source-health state. Regression tests cover retry success and exceeding the time bound.
 - Commits: retry logic `3511336`; regression tests `4ebb9f7`. Local full test suite: **224 passed, 0 failed**.
 - The hosted retry change has not yet been run. GDELT DOC remains rate-limited in hosted use and is not operational; Exa and ScienceDaily remain independent news sources.
+
+
+## GDELT bounded request retry follow-up — 2026-11-01
+
+- Run #27 passed all steps preceding the live GDELT call; the live request ended in a runtime timeout. Node exposed a numeric timeout code (`23`), which the prior runner reported as though it were a provider/database error. No GDELT records or checkpoint were committed, and the existing raw-only path created no notifications.
+- Updated the adapter timeout to 30 seconds and map timeout/network exceptions to stable non-sensitive codes. Preserved the single Retry-After retry and its 60-second ceiling. Updated the runner to accept only known adapter codes and string PostgreSQL codes.
+- Added regression tests for Node timeout normalization and sanitized generic network failures. Local GDELT tests: 11 passed, 0 failed. Full `node --test $(find acceptance tests -name '*.test.mjs' -print | sort)`: 226 passed, 0 failed. `git diff --check`: passed.
+- Hosted rerun is pending. This does not establish that GDELT is currently reachable. Existing Exa/ScienceDaily, three discovery engines, acceptance schemas, and notification infrastructure are preserved; no alert delivery, recurring scan, or production activation occurred.
