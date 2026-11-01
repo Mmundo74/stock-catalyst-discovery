@@ -114,3 +114,13 @@ jobs:
 
       - name: Test fail-closed discovery coverage gate
         run: node --test acceptance/v11/coverage_gate.test.mjs
+
+
+      - name: Test durable notification outbox claims (no external delivery)
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: node acceptance/v12/notification_outbox_acceptance.mjs
+
+      - name: Test outbox worker input and lease safeguards
+        run: node --test acceptance/v12/outbox_worker.test.mjs
