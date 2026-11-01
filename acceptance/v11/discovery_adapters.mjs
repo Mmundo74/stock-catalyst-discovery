@@ -31,6 +31,16 @@ export function normalizeExaPage(text, observedAt, metadata = {}) {
   return { records, page };
 }
 
+function classifyTickerbotInstrument(row) {
+  const assetClass = typeof row.asset_class === 'string' ? row.asset_class.toLowerCase() : null;
+  const code = typeof row.asset_type === 'string' ? row.asset_type.toUpperCase() : null;
+  if (assetClass && assetClass !== 'stocks') return { status: 'non_stock_asset_class', assetClass, assetType: code };
+  const classes = { CS:'common_stock', ADRC:'adr_common_stock', PFD:'preferred_stock', ETF:'exchange_traded_fund', FUND:'fund', ETN:'exchange_traded_note', ETV:'exchange_traded_vehicle', UNIT:'unit', SP:'special_product', WARRANT:'warrant', RIGHT:'right', ETS:'exchange_traded_security' };
+  return { status: code && classes[code] ? 'classified' : 'unknown_asset_type', assetClass, assetType: code, instrumentClass: classes[code] ?? null };
+}
+
+
+
 export function normalizeTickerbotPage(page, { cursorIn: suppliedCursorIn = null } = {}) {
   const data = page?.structuredContent;
   if (!data || !Array.isArray(data.results) || !data.query) throw new TypeError('invalid_tickerbot_page');
@@ -43,7 +53,7 @@ export function normalizeTickerbotPage(page, { cursorIn: suppliedCursorIn = null
     return { engine: 'market', source: 'tickerbot_market_scan',
       sourceEventId: 'ticker:' + row.ticker + ':' + observedAt, originalName: row.name, sourceUrl: null,
       eventTime: observedAt, observedAt, fingerprint,
-      sourcePayload: { provider: 'Tickerbot', observed_at: observedAt, query: data.query, raw_record: raw } };
+      sourcePayload: { provider: 'Tickerbot', observed_at: observedAt, query: data.query, instrument_classification: classifyTickerbotInstrument(row), raw_record: raw } };
   }).filter(Boolean);
   const invalidRows = data.results.length - records.length;
   const providerErrors = Array.isArray(data.errors) ? data.errors.slice() : [];
@@ -63,6 +73,7 @@ export function normalizeTickerbotPage(page, { cursorIn: suppliedCursorIn = null
   });
   return { records, page: { observedAt, count: data.count, nextCursor: cursorOut,
     inScopeRows: coverage?.in_scope_rows ?? null, signalCoverage: coverage?.columns ?? null,
+    signalCoverageStatus: coverage?.columns && typeof coverage.columns === 'object' ? 'provider_reported' : 'unknown',
     safeToCommitPage: assessment.safeToCommitPage,
     checkpointCandidate: assessment.checkpointCandidate,
     coverage: assessment, complete: assessment.sourceComplete } };
