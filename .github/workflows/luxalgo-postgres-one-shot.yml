@@ -148,3 +148,13 @@ jobs:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node acceptance/v15/sciencedaily_rss_once.mjs
+
+
+      - name: Test independent GDELT DOC news adapter
+        run: node --test acceptance/v16/gdelt_doc_news.test.mjs
+
+      - name: Run bounded live GDELT DOC ingestion (raw evidence only)
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: node acceptance/v16/gdelt_doc_news_once.mjs
