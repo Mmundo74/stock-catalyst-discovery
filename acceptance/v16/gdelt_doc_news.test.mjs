@@ -56,3 +56,13 @@ test('does not retry other errors or wait beyond the bound',async()=>{
   fetchImpl:async()=>{calls++;return{ok:false,status:429,headers:{get:()=> '61'}};}}),/retry_after_exceeds_bound/);
  assert.equal(calls,1); assert.equal(waits,0);
 });
+
+test('uses a bounded provider timeout and classifies runtime timeout codes safely', async () => {
+  let captured;
+  await assert.rejects(fetchGdeltDocNews({query:'FDA',startAt:'2026-11-01T16:00:00Z',endAt:now,fetchImpl:async (_url,init)=>{captured=init.signal;throw Object.assign(new Error('network detail'),{name:'TimeoutError',code:23});}}),/gdelt_request_timeout/);
+  assert.equal(captured instanceof AbortSignal,true);
+});
+
+test('maps generic network exceptions to a stable non-sensitive error code', async () => {
+  await assert.rejects(fetchGdeltDocNews({query:'FDA',startAt:'2026-11-01T16:00:00Z',endAt:now,fetchImpl:async()=>{throw Object.assign(new Error('credential-like detail'),{code:'ECONNRESET'});}}),/gdelt_request_failed/);
+});
