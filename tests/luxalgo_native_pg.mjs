@@ -55,7 +55,7 @@ try {
   console.log(JSON.stringify(report));
   process.exitCode = report.pass ? 0 : 1;
 } catch (err) {
-  console.error(JSON.stringify({ pass: false, checks: report.checks, error_kind: err instanceof Error ? err.name : 'unknown', phase: 'native_pg_acceptance' }));
+  console.error(JSON.stringify({ pass: false, checks: report.checks, error_kind: err instanceof Error ? err.name : 'unknown', error_code: typeof err?.code === 'string' && /^[A-Z0-9_]+$/i.test(err.code) ? err.code : undefined, error_message: err instanceof Error ? err.message.replace(/postgres(?:ql)?:\/\/\S+/gi, 'postgresql://[redacted]').slice(0, 240) : 'unknown', phase: 'native_pg_acceptance' }));
   process.exitCode = 1;
 } finally {
   if (connection) await connection.close().catch(() => {});
