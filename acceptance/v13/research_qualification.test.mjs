@@ -33,8 +33,16 @@ test('alert eligibility requires issuer, two evidence items, impact, verified pa
 });
 test('missing second independent evidence blocks alert eligibility',()=>{
  const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:parent,impactAssessment:impact,humanReview,evidence:evidence.slice(0,1)});
+ assert.equal(q.stage,'research_qualified');assert.equal(q.alertEligible,false);});
+
+test('two URLs from the same normalized publisher do not count as independent evidence',()=>{
+ const samePublisher=[{...evidence[0],sourceName:'Publisher',url:'https://www.publisher.example/a'},
+   {...evidence[1],sourceName:'Publisher',url:'https://publisher.example/b'}];
+ const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:parent,impactAssessment:impact,humanReview,evidence:samePublisher});
  assert.equal(q.stage,'research_qualified');assert.equal(q.alertEligible,false);
+ assert(q.alertEligibilityReasons.includes('two_independent_evidence_items_required'));
 });
+
 test('missing original evidence hash or source time fails closed',()=>{
  assert.throws(()=>qualifyDiscovery({event,issuerResolution:resolution,evidence:[{...evidence[0],sha256:'bad'}]}),/invalid_supporting_evidence/);
 });
