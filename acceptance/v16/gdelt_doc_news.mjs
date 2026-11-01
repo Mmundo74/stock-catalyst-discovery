@@ -56,11 +56,28 @@ export function normalizeGdeltResponse(body, { observedAt, query, maxRecords = G
 }
 
 export async function fetchGdeltDocNews({ query, startAt, endAt, observedAt = new Date().toISOString(),
-  maxRecords = GDELT_MAX_RECORDS, fetchImpl = fetch, timeoutMs = 12000 } = {}) {
+  maxRecords = GDELT_MAX_RECORDS, fetchImpl = fetch, timeoutMs = 12000,
+  maxRateLimitRetries = 1, waitImpl = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const url = buildGdeltDocUrl({ query, startAt, endAt, maxRecords });
-  const response = await fetchImpl(url, { headers: { accept: 'application/json',
-    'user-agent': 'stock-catalyst-discovery/acceptance (bounded independent-news source)' }, signal: AbortSignal.timeout(timeoutMs) });
-  if (!response?.ok) throw new Error('gdelt_http_' + (response?.status ?? 'unknown'));
+  if (!Number.isInteger(maxRateLimitRetries) || maxRateLimitRetries < 0 || maxRateLimitRetries > 1) {
+    throw new RangeError('invalid_rate_limit_retries');
+  }
+  let response;
+  for (let attempt = 0; attempt <= maxRateLimitRetries; attempt++) {
+    response = await fetchImpl(url, { headers: { accept: 'application/json',
+      'user-agent': 'stock-catalyst-discovery/acceptance (bounded independent-news source)' },
+      signal: AbortSignal.timeout(timeoutMs) });
+    if (response?.ok) break;
+    if (response?.status !== 429 || attempt === maxRateLimitRetries) {
+      throw new Error('gdelt_http_' + (response?.status ?? 'unknown'));
+    }
+    const retryAfter = response.headers?.get?.('retry-after');
+    let waitMs = 15000;
+    if (retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter.trim())) waitMs = Math.ceil(Number(retryAfter) * 1000);
+    else if (retryAfter && Number.isFinite(Date.parse(retryAfter))) waitMs = Math.max(0, Date.parse(retryAfter) - Date.now());
+    if (waitMs > 60000) throw new Error('gdelt_http_429_retry_after_exceeds_bound');
+    await waitImpl(waitMs);
+  }
   const normalized = normalizeGdeltResponse(await response.json(), { observedAt, query, maxRecords });
   return Object.freeze({ ...normalized, coverage: Object.freeze({ ...normalized.coverage,
     windowStart: new Date(startAt).toISOString(), windowEnd: new Date(endAt).toISOString() }) });
