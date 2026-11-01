@@ -15,3 +15,12 @@
 - **Test result:** Concurrency/idempotency **PASS for the tested isolated fixture**; rollback/checkpoint behavior **PASS for the tested fixture**; successful durable-processing checkpoint **PASS for the tested fixture**.
 - **Not run:** The native Node.js LuxAlgo GitHub Actions acceptance test. It remains blocked by the missing `SUPABASE_SESSION_POOLER_URL` secret and unavailable existing database password. The workflow was not dispatched.
 - **Status:** Development and isolated acceptance testing. The system is not deployed or operational. No production collector, recurring workload, alert, or automatic trading was activated.
+
+
+## Work package follow-up — 2026-11-01
+
+- The additive issuer-acceptance work package was subsequently supplied and reviewed. Its original offline suite reran at **89 passed, 0 failed** on Node.js 24.22.1.
+- Review found and corrected a source-normalization mismatch: Nasdaq Trader other-listed code `Z` (BATS) must normalize to the SEC association feed's current `CBOE` label. Added a synthetic end-to-end regression test; corrected suite: **90 passed, 0 failed**. Official references: Nasdaq Trader Symbol Directory Definitions and SEC CIK/ticker/exchange associations.
+- New modules remain additive and offline-only: SEC/Nasdaq issuer-source correlation, 2026 session calendar, scan-coverage accounting, and append-only evidence-chain codec. Synthetic tests do not establish live-source compatibility, broad market coverage, immutable raw-source custody, production integration, or safe multiworker behavior.
+- The work package and correction remain available as a separate artifact; they are not committed as individual source files because the connected GitHub integration rejected Git writes with `403 Resource not accessible by integration`, and the browser upload surface could not select the local archive. No existing source was replaced.
+- No collectors, recurring workloads, production alerts, schema changes, or trading were activated. The native LuxAlgo workflow remains blocked by the missing `SUPABASE_SESSION_POOLER_URL` secret and unavailable existing database password.
