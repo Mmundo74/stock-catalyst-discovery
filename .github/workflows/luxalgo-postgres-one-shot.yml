@@ -110,3 +110,7 @@ jobs:
 
       - name: Test independent news and market adapter normalization
         run: node --test acceptance/v11/discovery_adapters.test.mjs
+
+
+      - name: Test fail-closed discovery coverage gate
+        run: node --test acceptance/v11/coverage_gate.test.mjs
