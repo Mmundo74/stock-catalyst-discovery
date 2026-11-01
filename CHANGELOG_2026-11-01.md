@@ -171,3 +171,8 @@
 - Raw articles remain unreviewed evidence: **0** outbox rows were created for this sample and no alert was sent. This is not exactly-once delivery verification.
 - **Issue handled:** As with the market-page write, a first statement could not count sibling-CTE inserts under PostgreSQL statement snapshot rules, so only the event insert took effect. A second dependent statement inserted revisions and committed the run and source-health result; final readback verified both event and revision counts. No checkpoint or notification side effect occurred in the initial statement.
 - Preserved existing Supabase acceptance schemas and records, the current repository workflow and three-engine mission, and the existing phone-alert path. Production and recurring collection remain inactive.
+
+
+## Acceptance record correction — 2026-11-01
+
+- Clarification to the bounded durable Tickerbot page entry: the persisted database page was requested separately with `limit=10` and all 10 returned rows were stored. The adjacent live pagination probe used `limit=100` for each of two exploratory pages; those 200 exploratory rows were not written. The persisted 10-row page was separate from those 100-row pages.
