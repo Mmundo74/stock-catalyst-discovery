@@ -48,6 +48,46 @@ jobs:
             https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
           grep -Fq -- '-----BEGIN CERTIFICATE-----' "$RUNNER_TEMP/supabase-root-ca.crt"
           grep -Fq -- '-----END CERTIFICATE-----' "$RUNNER_TEMP/supabase-root-ca.crt"
+      - name: Bounded database authentication preflight
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const expected = {
+            protocol: 'postgresql:',
+            hostname: 'aws-0-us-west-1.pooler.supabase.com',
+            port: '5432',
+            database: '/postgres',
+            username: 'scd_luxalgo_acceptance.yeojyalevdljuddehukn',
+            sslmode: 'require'
+          };
+          let client;
+          try {
+            const url = new URL(process.env.SUPABASE_SESSION_POOLER_URL);
+            const checks = {
+              protocol: url.protocol === expected.protocol,
+              hostname: url.hostname === expected.hostname,
+              port: url.port === expected.port,
+              database: url.pathname === expected.database,
+              username: decodeURIComponent(url.username) === expected.username,
+              sslmode: url.searchParams.get('sslmode') === expected.sslmode
+            };
+            console.log(JSON.stringify({phase:'url_preflight', checks}));
+            if (Object.values(checks).some(v => !v)) process.exit(2);
+            client = new pg.Client({connectionString:url.toString(), connectionTimeoutMillis:8000});
+            await client.connect();
+            const {rows} = await client.query('select current_user = $1 as role_ok, current_database() = $2 as database_ok', ['scd_luxalgo_acceptance','postgres']);
+            console.log(JSON.stringify({phase:'auth_preflight', ...rows[0]}));
+            if (!rows[0].role_ok || !rows[0].database_ok) process.exitCode = 3;
+          } catch (error) {
+            console.error(JSON.stringify({phase:'auth_preflight', pass:false, error_code:error?.code ?? 'URL_OR_CLIENT_ERROR'}));
+            process.exitCode = 1;
+          } finally {
+            if (client) await client.end().catch(() => {});
+          }
+          NODE
       - name: Run native driver acceptance (temporary tables only)
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
