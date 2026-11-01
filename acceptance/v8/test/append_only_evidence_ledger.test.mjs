@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {appendEvidenceRecord,replayEvidenceLedger} from '../src/append_only_evidence_ledger.mjs';
+const event=(id)=>({id,source:'synthetic_news',occurred_at:'2026-11-01T12:00:00Z',original_name:'Example'});
+test('empty ledger',()=>assert.deepEqual(replayEvidenceLedger(''),{ok:true,records:[],last_hash:'GENESIS'}));
+test('two records replay with chain',()=>{let a=appendEvidenceRecord('',event('a'));let b=appendEvidenceRecord(a.text,event('b'));assert.equal(replayEvidenceLedger(b.text).records.length,2);assert.equal(b.record.previous_hash,a.record.hash);});
+test('duplicate id blocked',()=>{let a=appendEvidenceRecord('',event('a'));assert.throws(()=>appendEvidenceRecord(a.text,event('a')),/duplicate/);});
+test('corrupted content detected',()=>{let a=appendEvidenceRecord('',event('a'));assert.equal(replayEvidenceLedger(a.text.replace('Example','Altered')).error,'broken_chain');});
+test('truncated line detected',()=>{let a=appendEvidenceRecord('',event('a'));assert.equal(replayEvidenceLedger(a.text.slice(0,-1)).error,'partial_tail');});
+test('reordered records detected',()=>{let a=appendEvidenceRecord('',event('a'));let b=appendEvidenceRecord(a.text,event('b'));assert.equal(replayEvidenceLedger(b.text.split('\n').slice(0,2).reverse().join('\n')+'\n').ok,false);});
+test('invalid timestamp blocked',()=>assert.throws(()=>appendEvidenceRecord('',{...event('a'),occurred_at:'invalid'}),/invalid_event/));
+test('malformed input detected',()=>assert.equal(replayEvidenceLedger('oops\n').error,'invalid_json'));
+test('unknown record fields rejected',()=>{let a=appendEvidenceRecord('',event('a'));let r=JSON.parse(a.text);r.extra=1;assert.equal(replayEvidenceLedger(JSON.stringify(r)+'\n').error,'broken_chain');});
+test('cannot append to corrupt ledger',()=>assert.throws(()=>appendEvidenceRecord('bad\n',event('a')),/ledger_corrupt/));
