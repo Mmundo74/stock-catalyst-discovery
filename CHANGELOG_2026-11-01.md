@@ -34,6 +34,17 @@
 - The updated package is not yet integrated into this repository. Existing GitHub connector writes were rejected; the browser editor supports text edits but cannot select the local archive for upload.
 - **Preserved:** Existing repository files, manual LuxAlgo workflow, Supabase data/schemas, three-engine mission, Make/Brevo/Gmail/ChatGPT alerts. No production activation or database mutation. The existing Actions secret remains unavailable, and the database password was not reset.
 
+## Version 8 review and integration — 2026-11-01
+
+- Recovered the named Version 8 ZIP from the connected Library and independently ran `node --test test/*.test.mjs` on Node.js 24.22.1: **123 passed, 0 failed**. The tests use synthetic SEC/Nasdaq-shaped fixtures and reference models; they do not demonstrate live-source compatibility, live market-wide coverage, independent PostgreSQL-session concurrency, or operational collectors.
+- Added the unchanged V8 package archive and its source modules, test files, and synthetic fixtures under `acceptance/v8/`. Kept them isolated from the existing LuxAlgo workflow and `acceptance/v7` helpers. The V8 source is preserved for compatibility review and is not wired into collectors or production.
+- Confirmed the existing LuxAlgo workflow is `workflow_dispatch` only on `ubuntu-latest`; it has no recurring trigger. Inspected its native harness: it tests driver parameter conversion, temporary-table insert/upsert/rollback/commit, a reconnect, and a read of `catalyst_acceptance.events`. It does **not** currently test durable application writes, revisions, checkpoints, outbox idempotency, or independent-session concurrency.
+- Supabase’s current docs confirm custom `LOGIN` roles work with the shared session pooler and use `[role].[project-ref]` as username; the project Connect dialog provides the exact session endpoint. The documented beta CLI login-role endpoint issues a temporary CLI role and does not provide the verified durable schema-scoped test login needed here.
+- Database review confirmed RLS is enabled on all six `catalyst_acceptance` tables and the schema currently has no RLS policies. The harness needs only `USAGE` on `catalyst_acceptance`, `SELECT` on `events`, and a role-specific read policy to read existing acceptance evidence; temporary-table privileges come from the database’s existing PUBLIC TEMP grant. No unrelated application table grants are needed. No role or database ACL has yet been changed.
+- **Credential handoff required:** The Supabase role form is staged as `scd_luxalgo_acceptance`, with only `LOGIN` enabled and all create-role, create-database, bypass-RLS, replication, and superuser controls off. The user must create/enter the role password directly in the Supabase page and then enter the session URI in the pre-opened GitHub Actions secret form. The existing database password was not reset.
+- **Blocked pending handoff:** `SUPABASE_SESSION_POOLER_URL` remains absent, no custom DB role has been created, and the native Actions workflow has not run. Independent PostgreSQL-session concurrency and the database-backed outbox/checkpoint acceptance remain outstanding. No production collectors, recurring jobs, or alerts were activated.
+
+
 
 ## Repository integration follow-up — 2026-11-01
 
