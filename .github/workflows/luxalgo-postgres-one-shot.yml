@@ -1,0 +1,47 @@
+name: LuxAlgo pinned PostgreSQL one-shot acceptance
+
+# Manual only: no push, pull_request, cron, or repository_dispatch triggers.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: luxalgo-pg-one-shot
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout acceptance harness
+        uses: actions/checkout@v4
+      - name: Set up native Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify database secret configured (do not echo)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo 'Missing secret SUPABASE_SESSION_POOLER_URL; do not paste it into logs.' >&2
+            exit 1
+          fi
+      - name: Retrieve exact pinned LuxAlgo source (no modifications)
+        run: |
+          mkdir -p vendor/luxalgo
+          git -C vendor/luxalgo init -q
+          git -C vendor/luxalgo remote add origin https://github.com/LuxAlgo/market-trackers.git
+          git -C vendor/luxalgo fetch -q --depth=1 origin 1ecfcca36a224d4758cc6e2e20cca216db43d5ee
+          git -C vendor/luxalgo checkout --detach -q FETCH_HEAD
+          test "$(git -C vendor/luxalgo rev-parse HEAD)" = "1ecfcca36a224d4758cc6e2e20cca216db43d5ee"
+          test -f vendor/luxalgo/packages/core/src/store/sql-driver.ts
+      - name: Install only pinned Node postgres client
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund pg@8.16.0
+      - name: Run native driver acceptance (temporary tables only)
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL}}
+        run: node --experimental-strip-types tests/luxalgo_native_pg.mjs
