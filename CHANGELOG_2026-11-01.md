@@ -76,3 +76,12 @@
 - Independently reran the supplied offline suites: V8 123 passed, 0 failed; V7 122 passed, 0 failed; earlier issuer package 90 passed, 0 failed. The suites overlap and are reported separately, not summed. Synthetic fixtures do not prove live collection, PostgreSQL concurrency, or alert delivery.
 - Preserved the existing repository, both Supabase acceptance schemas and records, restricted role, manual-only workflow, LuxAlgo pin, and existing notification path. No production collectors, recurring workloads, paid services, or trading were activated.
 - Remaining: secure correction of the existing Actions secret URI, then repeat the native one-shot test. The harness only exercises temporary-table transactions and a read from events; durable application writes, independent-session concurrency, and end-to-end notification recovery remain unverified. The three engines remain under development, not operational.
+
+
+## Supabase TLS fix and credential acceptance — 2026-11-01
+
+- **Implemented:** Commit 173cd252c31585e8a31dde7bbdc420f834461507 updated the existing manual-only LuxAlgo workflow to fetch Supabase's published root CA and add it to Node's trusted CA set. Certificate verification remains enabled; the pinned LuxAlgo source and standard runner are preserved.
+- **Live workflow:** Runs 41338936107 and 41339155936 both passed CA setup and reached Supabase, then failed before SQL with PostgreSQL 28P01 for the dedicated acceptance role. The second run followed the secret update. The saved credential is rejected or its password encoding is incorrect.
+- **Role and data:** The restricted role remains LOGIN-only without elevated flags. No original password was reset. Both failures occurred before database operations; no test SQL ran and no rows changed.
+- **Offline tests rerun separately:** V8 123/0, V7 122/0, earlier issuer package 90/0, repository V7 helpers 33/0. Synthetic/offline results do not establish live collection, independent-session concurrency, or alert delivery.
+- **Blocker:** The dedicated role password must match the URL-encoded password in the existing GitHub secret. No permissions were broadened to bypass authentication.
