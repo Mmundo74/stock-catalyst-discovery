@@ -38,7 +38,7 @@ try {
   await client.query('update catalyst_acceptance.pipeline_runs set status=\'committed\',completed_at=now(),evidence=$2::jsonb where run_id=$1', [runId,JSON.stringify({ source, coverage })]);
   if (!continuity.continuityGap) {
     await client.query('insert into catalyst_acceptance.checkpoints(source_key,cursor_value,last_completed_run) values($1,$2,$3) on conflict(source_key) do update set cursor_value=excluded.cursor_value,last_completed_run=excluded.last_completed_run,advanced_at=now()', [sourceKey,batch.page.nextCursor,runId]);  }
-  await client.query('update catalyst_acceptance.source_health set last_success_at=now(),state=$2,last_error=$3 where source_key=$1', [sourceKey, continuity.continuityGap ? 'degraded' : 'healthy', continuity.continuityGap ? 'RSS_CHECKPOINT_GAP' : null]);
+  await client.query('update catalyst_acceptance.source_health set last_success_at=now(),state=$2,last_error=$3 where source_key=$1', [sourceKey, continuity.continuityGap ? 'error' : 'healthy', continuity.continuityGap ? 'RSS_CHECKPOINT_GAP' : null]);
   await client.query('COMMIT'); tx = false;
   console.log(JSON.stringify({ pass:!continuity.continuityGap,run_id:runId,source,checks:{ durable_events:true,durable_revisions:true,checkpoint_after_durability:!continuity.continuityGap,raw_not_queued:true,source_health_recorded:true },coverage }));if (continuity.continuityGap) process.exitCode = 1;
 } catch (error) {
