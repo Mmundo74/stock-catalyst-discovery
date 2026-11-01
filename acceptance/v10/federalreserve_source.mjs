@@ -71,3 +71,31 @@ export function normalizeBoundedFeeds(feeds, retrievedAt, maxRecords) {
   }
   return { records, coverage: { recordsAvailable: available, recordsInScopeAvailable: inScopeAvailable, recordsProcessed: processed, recordsSelected: records.length, recordsOutOfScopeProcessed: outOfScopeProcessed, parseFailures, complete: processed === available && parseFailures === 0 } };
 }
+
+
+export function feedSnapshotHash(feeds) {
+  return createHash('sha256').update(JSON.stringify(feeds.map(feed => feed.items))).digest('hex');
+}
+
+export function normalizeFeedRange(feeds, retrievedAt, maxRecords, startOffset = 0) {
+  const available = feeds.reduce((n, feed) => n + feed.items.length, 0);
+  if (!Number.isInteger(startOffset) || startOffset < 0 || startOffset > available) throw new Error('invalid_feed_offset');
+  const inScopeAvailable = feeds.reduce((n, feed, i) => n + feed.items.filter(raw => FEEDS[i].type !== null || raw.pt === 'Monetary Policy').length, 0);
+  const records = [];
+  let absoluteOffset = 0, processed = 0, parseFailures = 0, outOfScopeProcessed = 0, blockedOffset = null;
+  for (let i = 0; i < feeds.length; i++) {
+    for (const raw of feeds[i].items) {
+      if (absoluteOffset < startOffset) { absoluteOffset++; continue; }
+      if (processed >= maxRecords || blockedOffset !== null) break;
+      const itemOffset = absoluteOffset++; processed++;
+      try {
+        const normalized = normalizeFedItem(raw, FEEDS[i].type, feeds[i].url, retrievedAt);
+        if (normalized) records.push({ raw, feedUrl: feeds[i].url, ...normalized });
+        else outOfScopeProcessed++;
+      } catch { parseFailures++; blockedOffset = itemOffset; }
+    }
+    if (processed >= maxRecords || blockedOffset !== null) break;
+  }
+  const nextOffset = blockedOffset === null ? startOffset + processed : blockedOffset;
+  return { records, coverage: { recordsAvailable: available, recordsInScopeAvailable: inScopeAvailable, recordsProcessed: processed, recordsSelected: records.length, recordsOutOfScopeProcessed: outOfScopeProcessed, parseFailures, blockedOffset, startOffset, nextOffset, complete: nextOffset === available && parseFailures === 0 } };
+}
