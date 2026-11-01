@@ -42,3 +42,17 @@ test('bounded fetch parses results and records HTTP failure',async()=>{
  assert.equal(called.url.searchParams.get('maxrecords'),'4'); assert.equal(called.init.headers.accept,'application/json'); assert.equal(r.records.length,1);
  await assert.rejects(fetchGdeltDocNews({query:'FDA',startAt:'2026-11-01T16:00:00Z',endAt:now,fetchImpl:async()=>({ok:false,status:503})}),/gdelt_http_503/);
 });
+
+
+test('retries one rate-limited request after provider Retry-After',async()=>{
+ let calls=0,waited;
+ const result=await fetchGdeltDocNews({query:'FDA',startAt:'2026-11-01T16:00:00Z',endAt:now,observedAt:now,maxRecords:4,waitImpl:async ms=>{waited=ms;},
+  fetchImpl:async()=>++calls===1?{ok:false,status:429,headers:{get:()=> '2'}}:{ok:true,json:async()=>({articles:[art(6)]})}});
+ assert.equal(calls,2); assert.equal(waited,2000); assert.equal(result.records.length,1);
+});
+test('does not retry other errors or wait beyond the bound',async()=>{
+ let calls=0,waits=0;
+ await assert.rejects(fetchGdeltDocNews({query:'FDA',startAt:'2026-11-01T16:00:00Z',endAt:now,waitImpl:async()=>{waits++;},
+  fetchImpl:async()=>{calls++;return{ok:false,status:429,headers:{get:()=> '61'}};}}),/retry_after_exceeds_bound/);
+ assert.equal(calls,1); assert.equal(waits,0);
+});
