@@ -112,3 +112,13 @@
 - **Shared storage replay:** Four Exa/Tickerbot sample events were written to the isolated acceptance schema with revisions and pending outbox rows. Replaying the same records inserted **0** duplicate events, revisions, or outbox rows. Pipeline audit runs and source-health entries were recorded; no checkpoint advanced for these partial samples.
 - **Fingerprint note:** The four direct SQL sample rows carry FNV-1a 32-bit fingerprints, explicitly recorded in their test-run evidence. These are acceptance samples and are not cryptographic integrity proofs. The committed adapter code emits SHA-256 fingerprints for subsequent adapter-based ingestion.
 - **Alerts and operations:** All newly created outbox entries remain pending; no Make, Brevo, Gmail, or ChatGPT notification was sent. The existing phone pipeline and alert task remain unchanged. No production or recurring collectors were activated. System status remains **not operational**; tested components are offline-tested or live one-shot accepted only.
+
+
+## Coverage gate integration — 2026-11-01
+
+- Inspected the current V11 adapters and November 1 changelog. The ZIP and separate integration notes were unavailable in this Work workspace; the module and test source were available individually and used directly.
+- Added the coverage gate module and nine fail-closed tests under acceptance/v11. Kept existing Exa and Tickerbot adapter interfaces; added an Exa page assessment helper and explicit Tickerbot page coverage fields. Malformed rows, errors, truncation, duplicate/missing IDs, count mismatch, and cursor loops prevent checkpoint advancement. A missing continuation cursor no longer implies complete coverage; completion requires explicit provider confirmation.
+- Preserved existing engines, pinned LuxAlgo source, PostgreSQL acceptance code, Supabase schemas/data, and existing iPhone notification pipeline. Extended the same workflow, which remains manual-only (workflow_dispatch). No production or recurring work, external notifications, or trading were activated.
+- Offline verification: coverage gate plus V11 adapters 15 passed, 0 failed; V8 suite 124 passed, 0 failed; Federal Reserve source normalization 9 passed, 0 failed. One old V11 expectation incorrectly inferred completion from an absent cursor; corrected it and reran all three suites successfully.
+- The live manual workflow is pending. No live pass is claimed until its logs are inspected.
+- Limitations: Exa continuation metadata still must come from its actual provider response; this patch does not implement unattended Exa or Tickerbot collectors or prove complete market coverage. Outbox delivery remains unfinished.
