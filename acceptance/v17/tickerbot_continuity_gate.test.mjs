@@ -65,7 +65,33 @@ test('rejects the observed stored-cursor page when universe counts and null cove
   const result = assess({ response: response({ _meta: { null_coverage: observed,
     history_revised_at: { 'NPWR.WS': '2026-10-31T08:27:03.156Z' } } }) });
   assert.ok(result.reasons.includes('coverage_snapshot_changed'));
-  assert.ok(result.reasons.includes('historical_rows_revised'));
+  assert.ok(!result.reasons.includes('historical_rows_revised_after_snapshot'));
+  assert.equal(result.safeToAdvanceCheckpoint, false);
+});
+
+test('accepts correction metadata dated before the pinned historical view when scope is unchanged', () => {
+  const result = assess({ response: response({ _meta: {
+    null_coverage: coverage,
+    history_revised_at: { AAA: '2026-10-31T08:27:03.156Z' },
+  } }) });
+  assert.equal(result.safeToAdvanceCheckpoint, true);
+});
+
+test('rejects a correction newer than the pinned historical view', () => {
+  const result = assess({ response: response({ _meta: {
+    null_coverage: coverage,
+    history_revised_at: { AAA: '2026-11-02T01:00:00.000Z' },
+  } }) });
+  assert.ok(result.reasons.includes('historical_rows_revised_after_snapshot'));
+  assert.equal(result.safeToAdvanceCheckpoint, false);
+});
+
+test('rejects malformed correction timestamps instead of guessing', () => {
+  const result = assess({ response: response({ _meta: {
+    null_coverage: coverage,
+    history_revised_at: { AAA: 'unknown' },
+  } }) });
+  assert.ok(result.reasons.includes('historical_revision_timestamp_invalid'));
   assert.equal(result.safeToAdvanceCheckpoint, false);
 });
 
