@@ -5,7 +5,7 @@ import { fetchNewsCentral } from './news_central_api.mjs';
 const connectionString = process.env.SUPABASE_SESSION_POOLER_URL;
 if (!connectionString) throw new Error('missing_database_url');
 const runId = 'scd_news_central_once_' + randomUUID().replaceAll('-', '');
-const sourceKey = 'news-central:business';
+const sourceKey = 'news-central:all';
 const source = 'news-central-site';
 const engine = 'news';
 const overlapMs = 24 * 60 * 60 * 1000;
@@ -33,10 +33,10 @@ try {
   const prior = readCheckpoint(result.rows[0]?.cursor_value ?? null);
   const since = prior ? new Date(Math.max(0, Date.parse(prior.last_window_end) - overlapMs)).toISOString()
     : new Date(Date.parse(observedAt) - 6 * 60 * 60 * 1000).toISOString();
-  const batch = await fetchNewsCentral({ observedAt, since, until: observedAt, section: 'business', limit: 50, maxPages: 3 });
+  const batch = await fetchNewsCentral({ observedAt, since, until: observedAt, limit: 50, maxPages: 3 });
   await client.query('BEGIN'); tx = true;
   await client.query('INSERT INTO catalyst_acceptance.pipeline_runs(run_id,engine,status,evidence) VALUES($1,$2,\'started\',$3::jsonb)',
-    [runId, engine, JSON.stringify({ source, stage: 'public-api-window', bounded: true, since, until: observedAt })]);
+    [runId, engine, JSON.stringify({ source, stage: 'public-api-window', edition_scope: 'all_sections', bounded: true, since, until: observedAt })]);
   await client.query('INSERT INTO catalyst_acceptance.source_health(source_key,last_attempt_at,state,last_error) VALUES($1,now(),\'healthy\',null) ON CONFLICT(source_key) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,state=\'healthy\',last_error=null', [sourceKey]);
   let insertedEvents = 0;
   let insertedRevisions = 0;

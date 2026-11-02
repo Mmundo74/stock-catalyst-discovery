@@ -57,6 +57,21 @@ test('one-page window verifies its identity, deduplicates by permanent ID, and s
   assert.equal(result.coverage.snapshotTokenExposed, false);
 });
 
+test('unfiltered edition preserves section identities and accounts for returned sections', async () => {
+  let requested;
+  const result = await fetchNewsCentral({ observedAt, since: '2026-11-01T00:00:00Z', until: observedAt,
+    fetchImpl: async url => { requested = new URL(url); return mockResponse(response([
+      item('business-1', { section: { name: 'Business' } }),
+      item('science-1', { section: { name: 'Science' } }),
+    ], { total: 2 })); } });
+  assert.equal(requested.searchParams.has('section'), false);
+  assert.equal(result.coverage.editionScope.kind, 'all_sections');
+  assert.deepEqual(result.coverage.sectionCounts, { Business: 1, Science: 1 });
+  assert.equal(result.records[0].sourcePayload.raw_record.section.name, 'Business');
+  assert.equal(result.records[1].sourcePayload.raw_record.section.name, 'Science');
+  assert.equal(result.coverage.sourceComplete, false);
+});
+
 test('bounded multipage sweep verifies every page identity before checkpoint', async () => {
   const calls = [];
   const pages = new Map([

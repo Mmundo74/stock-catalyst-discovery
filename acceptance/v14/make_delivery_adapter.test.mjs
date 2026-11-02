@@ -116,3 +116,54 @@ test('receiver idempotency survives lost acknowledgement and sender lease retry 
   assert.equal(conflict.status,409);assert.equal(ledger.size,1);
  }finally{if(prior===undefined)delete process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;else process.env.SCD_NOTIFICATION_DELIVERY_ENABLED=prior;}
 });
+
+test('sender waits for a delayed receiver acknowledgement before marking delivery sent',async()=>{
+ const prior=process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;process.env.SCD_NOTIFICATION_DELIVERY_ENABLED='true';
+ let releaseResponse,receiverCommitted=false,sentAcknowledgements=0;
+ const responsePending=new Promise(resolve=>{releaseResponse=resolve;});
+ const client={query:async(sql)=>{
+  if(sql.includes('FROM catalyst_acceptance.notification_outbox'))return {rowCount:1,rows:[{ok:1}]};
+  if(sql.includes('FROM catalyst_acceptance.research_qualifications'))return {rowCount:1,rows:[qualification()]};
+  if(sql.includes("SET state='sent'")){sentAcknowledgements++;return {rowCount:1,rows:[]};}
+  if(sql.includes('SET state=$3'))return {rowCount:1,rows:[]};
+  throw new Error('unexpected_query');
+ }};
+ const token='c9bf9e57-1685-4c89-bafb-ff5af830be8a';
+ const leased={...item,claim_token:token,lease_expires_at:new Date(Date.now()+60000),payload:{...item}};
+ try{
+  const delivery=dispatchClaimedOutboxItem({client,item:leased,workerToken:token,endpoint:'https://receiver.example.test/make',enabled:true,
+    fetchImpl:async()=>{receiverCommitted=true;return responsePending;}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(receiverCommitted,true);assert.equal(sentAcknowledgements,0);
+  releaseResponse({ok:true,status:202});
+  const receipt=await delivery;assert.equal(receipt.delivered,true);assert.equal(sentAcknowledgements,1);
+ }finally{if(prior===undefined)delete process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;else process.env.SCD_NOTIFICATION_DELIVERY_ENABLED=prior;}
+});
+
+test('retries safely after sender-side acknowledgement failure without duplicating receiver work',async()=>{
+ const prior=process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;process.env.SCD_NOTIFICATION_DELIVERY_ENABLED='true';
+ const ledger=new Map();let acknowledgementAttempts=0,posts=0;
+ const receiver=async(_url,options)=>{
+  posts++;const key=options.headers['idempotency-key'];const body=options.body;const digest=hash(body);
+  const old=ledger.get(key);if(old&&old!==digest)return {ok:false,status:409};
+  if(!old)ledger.set(key,digest);
+  return {ok:true,status:old?200:202};
+ };
+ const client={query:async(sql)=>{
+  if(sql.includes('FROM catalyst_acceptance.notification_outbox'))return {rowCount:1,rows:[{ok:1}]};
+  if(sql.includes('FROM catalyst_acceptance.research_qualifications'))return {rowCount:1,rows:[qualification()]};
+  if(sql.includes("SET state='sent'")){acknowledgementAttempts++;return {rowCount:acknowledgementAttempts===1?0:1,rows:[]};}
+  if(sql.includes('SET state=$3'))return {rowCount:1,rows:[]};
+  throw new Error('unexpected_query');
+ }};
+ const firstToken='c9bf9e57-1685-4c89-bafb-ff5af830be8a';
+ const secondToken='123e4567-e89b-42d3-a456-426614174000';
+ const leased=token=>({...item,claim_token:token,lease_expires_at:new Date(Date.now()+60000),payload:{...item}});
+ try{
+  await assert.rejects(dispatchClaimedOutboxItem({client,item:leased(firstToken),workerToken:firstToken,endpoint:'https://receiver.example.test/make',enabled:true,fetchImpl:receiver}),/outbox_claim_lost/);
+  assert.equal(ledger.size,1);assert.equal(acknowledgementAttempts,1);
+  const retry=await dispatchClaimedOutboxItem({client,item:leased(secondToken),workerToken:secondToken,endpoint:'https://receiver.example.test/make',enabled:true,fetchImpl:receiver});
+  assert.equal(retry.delivered,true);assert.equal(retry.receiverStatus,200);
+  assert.equal(posts,2);assert.equal(ledger.size,1);assert.equal(acknowledgementAttempts,2);
+ }finally{if(prior===undefined)delete process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;else process.env.SCD_NOTIFICATION_DELIVERY_ENABLED=prior;}
+});

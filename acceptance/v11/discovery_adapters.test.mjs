@@ -18,7 +18,7 @@ test('Tickerbot normalization preserves optional coverage metadata and explicit 
   const page = { structuredContent: {
     as_of: '2026-11-01T20:37:25.770Z', count: 1, next_cursor: 'opaque-next',
     query: { q: 'asset_type = CS AND rapid_move_up_5m', limit: 1 },
-    _meta: { null_coverage: { in_scope_rows: 16030, columns: { rapid_move_up_5m: { null_rows: 3389, evaluable_rows: 12641 } } } },
+    _meta: { null_coverage: { measured_at:'2026-11-01T20:37:25.700Z', in_scope_rows: 16030, columns: { rapid_move_up_5m: { null_rows: 3389, evaluable_rows: 12641 } } } },
     results: [{ ticker: 'ABC', name: 'Example Corp', asset_type: 'CS', rapid_move_up_5m: true }],
   } };
   const out = normalizeTickerbotPage(page);
@@ -27,9 +27,13 @@ test('Tickerbot normalization preserves optional coverage metadata and explicit 
   assert.equal(out.page.inScopeRows, 16030);
   assert.equal(out.page.signalCoverage.rapid_move_up_5m.null_rows, 3389);
   assert.equal(out.page.signalCoverageStatus, 'provider_reported');
+  assert.equal(out.page.coverageMeasuredAt,'2026-11-01T20:37:25.700Z');
   assert.equal(out.page.nextCursor, 'opaque-next');
   assert.equal(out.page.complete, false);
-  assert.equal(normalizeTickerbotPage({ structuredContent: { ...page.structuredContent, next_cursor: null } }).page.complete, true);
+  const terminal = normalizeTickerbotPage({ structuredContent: { ...page.structuredContent, next_cursor: null } });
+  assert.equal(terminal.page.paginationComplete, true);
+  assert.equal(terminal.page.sourceComplete, false);
+  assert.equal(terminal.page.complete, false);
   assert.equal(normalizeTickerbotPage({ structuredContent: { ...page.structuredContent, next_cursor: undefined } }).page.complete, false);
 });
 
@@ -62,7 +66,9 @@ test('Tickerbot page gate advances a valid page and recognizes documented termin
   assert.equal(intermediate.page.checkpointCandidate, 'c2');
   assert.equal(intermediate.page.complete, false);
   const terminal = normalizeTickerbotPage({ structuredContent: { ...base, next_cursor: null } });
-  assert.equal(terminal.page.complete, true);
+  assert.equal(terminal.page.paginationComplete, true);
+  assert.equal(terminal.page.complete, false);
+  assert.equal(terminal.page.coverage.sourceComplete, false);
   const terminalWithoutCursorField = normalizeTickerbotPage({ structuredContent: base });
   assert.equal(terminalWithoutCursorField.page.complete, false);
 });
@@ -96,4 +102,42 @@ test('Tickerbot separates common shares, fund instruments, warrants, rights, and
     ['common_stock', 'exchange_traded_fund', 'warrant', 'right', null]);
   assert.equal(result.records.at(-1).sourcePayload.instrument_classification.status, 'unknown_asset_type');
   assert.equal(result.page.signalCoverageStatus, 'unknown');
+});
+
+test('Tickerbot reports security type coverage across pages without dropping unclassified or non-common rows', () => {
+  const makePage = (rows, next_cursor, cursor) => normalizeTickerbotPage({ structuredContent: {
+    as_of:'2026-11-02T02:45:51.419Z', count:rows.length, next_cursor,
+    query:{q:'asset_class = stocks',asset_class:['stocks'],limit:4},
+    _meta:{null_coverage:{in_scope_rows:100,columns:{asset_type:{null_rows:3,evaluable_rows:97}}}},
+    results:rows,
+  } }, {cursorIn:cursor});
+  const first = makePage([
+    {ticker:'CS1',name:'Common',asset_class:'stocks',asset_type:'CS'},
+    {ticker:'ADR1',name:'ADR common',asset_class:'stocks',asset_type:'ADRC'},
+    {ticker:'UNIT1',name:'Acquisition unit',asset_class:'stocks',asset_type:'UNIT'},
+    {ticker:'W1',name:'Warrant',asset_class:'stocks',asset_type:'WARRANT'},
+  ],'cursor-2','cursor-1');
+  const second = makePage([
+    {ticker:'R1',name:'Right',asset_class:'stocks',asset_type:'RIGHT'},
+    {ticker:'UNK1',name:'Unknown',asset_class:'stocks',asset_type:'NEWTYPE'},
+    {ticker:'MISS1',name:'Missing type',asset_class:'stocks'},
+    {ticker:'FUND1',name:'Fund',asset_class:'stocks',asset_type:'ETF'},
+  ],null,'cursor-2');
+  assert.equal(first.records.length,4);
+  assert.equal(second.records.length,4);
+  assert.equal(first.page.safeToCommitPage,true);
+  assert.equal(first.page.checkpointCandidate,'cursor-2');
+  assert.equal(second.page.paginationComplete,true);
+  assert.equal(second.page.checkpointCandidate,null);
+  assert.equal(second.page.complete,false);
+  assert.deepEqual(first.page.instrumentCoverage.instrumentClassCounts,{
+    common_stock:1,adr_common_stock:1,unit:1,warrant:1,
+  });
+  assert.deepEqual(second.page.instrumentCoverage.instrumentClassCounts,{
+    right:1,'unknown:NEWTYPE':1,'unknown:missing':1,exchange_traded_fund:1,
+  });
+  assert.equal(second.page.instrumentCoverage.unknownAssetTypeRows,2);
+  assert.equal(second.page.instrumentCoverage.missingAssetTypeRows,1);
+  assert.deepEqual(second.page.instrumentCoverage.unknownAssetTypeCodes,['NEWTYPE']);
+  assert.equal(second.page.instrumentCoverage.classificationComplete,false);
 });

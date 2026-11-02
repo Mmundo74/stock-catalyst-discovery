@@ -158,8 +158,15 @@ export async function fetchNewsCentral({ fetchImpl = fetch, observedAt = new Dat
   const allIds = initial.flatMap(page => page.records.map(record => record.sourceEventId));
   if (new Set(allIds).size !== allIds.length) reason ??= 'duplicate_ids_across_pages';
   const records = initial.flatMap(page => page.records);
+  const sectionCounts = {};
+  for (const record of records) {
+    const section = typeof record.sourcePayload.section === 'string' && record.sourcePayload.section.trim()
+      ? record.sourcePayload.section.trim() : 'unknown';
+    sectionCounts[section] = (sectionCounts[section] ?? 0) + 1;
+  }
   const completeWindow = reason === null && records.length === first.page.total && initial.length === countPages;
   return { records, coverage: { provider: 'News Central Site API', section: section ?? null,
+    editionScope: section ? { kind: 'section', section } : { kind: 'all_sections' }, sectionCounts,
     since: since ? new Date(since).toISOString() : null, until: new Date(until).toISOString(),
     requests: calls.length, requestedPages: initial.length, providerTotal: first.page.total,
     providerPages: countPages, returnedRecords: records.length, paginationExposed: true,

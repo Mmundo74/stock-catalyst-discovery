@@ -33,10 +33,33 @@ export function normalizeExaPage(text, observedAt, metadata = {}) {
 
 function classifyTickerbotInstrument(row) {
   const assetClass = typeof row.asset_class === 'string' ? row.asset_class.toLowerCase() : null;
-  const code = typeof row.asset_type === 'string' ? row.asset_type.toUpperCase() : null;
+  const code = typeof row.asset_type === 'string' && row.asset_type.trim() ? row.asset_type.trim().toUpperCase() : null;
   if (assetClass && assetClass !== 'stocks') return { status: 'non_stock_asset_class', assetClass, assetType: code };
   const classes = { CS:'common_stock', ADRC:'adr_common_stock', PFD:'preferred_stock', ETF:'exchange_traded_fund', FUND:'fund', ETN:'exchange_traded_note', ETV:'exchange_traded_vehicle', UNIT:'unit', SP:'special_product', WARRANT:'warrant', RIGHT:'right', ETS:'exchange_traded_security' };
   return { status: code && classes[code] ? 'classified' : 'unknown_asset_type', assetClass, assetType: code, instrumentClass: classes[code] ?? null };
+}
+
+function summarizeInstrumentCoverage(rows, normalizedRows) {
+  const instrumentClassCounts = {}, assetClassCounts = {}, unknownAssetTypeCodes = new Set();
+  let missingAssetTypeRows = 0, unknownAssetTypeRows = 0, nonStockAssetClassRows = 0, malformedRows = 0;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) { malformedRows++; unknownAssetTypeRows++; continue; }
+    const classification = classifyTickerbotInstrument(row);
+    const assetClass = classification.assetClass ?? 'unknown';
+    assetClassCounts[assetClass] = (assetClassCounts[assetClass] ?? 0) + 1;
+    if (classification.status === 'non_stock_asset_class') nonStockAssetClassRows++;
+    if (classification.status === 'unknown_asset_type') {
+      unknownAssetTypeRows++;
+      if (classification.assetType) unknownAssetTypeCodes.add(classification.assetType);
+      else missingAssetTypeRows++;
+    }
+    const label = classification.instrumentClass ?? (classification.assetType ? `unknown:${classification.assetType}` : 'unknown:missing');
+    instrumentClassCounts[label] = (instrumentClassCounts[label] ?? 0) + 1;
+  }
+  return { rowsReported: rows.length, rowsNormalized: normalizedRows,
+    instrumentClassCounts, assetClassCounts, unknownAssetTypeRows, missingAssetTypeRows,
+    unknownAssetTypeCodes: [...unknownAssetTypeCodes].sort(), nonStockAssetClassRows, malformedRows,
+    classificationComplete: unknownAssetTypeRows === 0 && malformedRows === 0 };
 }
 
 
@@ -61,6 +84,7 @@ export function normalizeTickerbotPage(page, { cursorIn: suppliedCursorIn = null
   const cursorIn = suppliedCursorIn ?? data.cursor_in ?? data.query?.cursor ?? null;
   const cursorOut = data.next_cursor ?? null;
   const pageCount = Number.isSafeInteger(data.count) ? data.count : null;
+  const paginationComplete = Object.hasOwn(data, 'next_cursor') && data.next_cursor === null;
   const assessment = assessDiscoveryPage({
     sourceKey: 'tickerbot:market-scan', records, cursorIn, cursorOut,
     expectedCount: pageCount,
@@ -68,13 +92,19 @@ export function normalizeTickerbotPage(page, { cursorIn: suppliedCursorIn = null
     errors: providerErrors,
     // Tickerbot documents an explicit null next_cursor as the final page.
     // An absent field remains unverified and does not claim full coverage.
-    providerComplete: data.complete === true ||
-      (Object.hasOwn(data, 'next_cursor') && data.next_cursor === null),
+    providerComplete: data.complete === true || paginationComplete,
   });
+  const instrumentCoverage = summarizeInstrumentCoverage(data.results, records.length);
+  // A terminal cursor closes this query's pagination only. It does not prove
+  // that the provider's universe, security typing, or signal coverage is complete.
+  assessment.sourceComplete = false;
   return { records, page: { observedAt, count: data.count, nextCursor: cursorOut,
     inScopeRows: coverage?.in_scope_rows ?? null, signalCoverage: coverage?.columns ?? null,
+    coverageMeasuredAt: coverage?.measured_at ?? null,
+    providerSnapshotId: coverage?.snapshot_id ?? coverage?.snapshot_token ?? null,
     signalCoverageStatus: coverage?.columns && typeof coverage.columns === 'object' ? 'provider_reported' : 'unknown',
+    instrumentCoverage, paginationComplete, sourceComplete: false,
     safeToCommitPage: assessment.safeToCommitPage,
     checkpointCandidate: assessment.checkpointCandidate,
-    coverage: assessment, complete: assessment.sourceComplete } };
+    coverage: assessment, complete: false } };
 }

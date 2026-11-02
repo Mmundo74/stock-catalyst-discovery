@@ -74,12 +74,6 @@ jobs:
         run: node acceptance/v9/postgres_persistence.mjs
       - name: Test pinned Federal Reserve source normalization
         run: node --test acceptance/v10/federalreserve_source.test.mjs
-      - name: Run bounded real LuxAlgo Federal Reserve ingestion
-        env:
-          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
-          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
-          LUXALGO_MAX_ITEMS: '9'
-        run: node acceptance/v10/luxalgo_federalreserve_once.mjs
       - name: Test independent news and market adapter normalization
         run: node --test acceptance/v11/discovery_adapters.test.mjs
       - name: Test fail-closed discovery coverage gate
@@ -109,7 +103,7 @@ jobs:
         run: node acceptance/v15/sciencedaily_rss_once.mjs
       - name: Test bounded independent News Central API collector
         run: node --test acceptance/v18/news_central_api.test.mjs
-      - name: Run bounded live News Central business-news ingestion
+      - name: Run bounded live News Central all-section ingestion
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
@@ -119,6 +113,12 @@ jobs:
 
       - name: Test Tickerbot cursor continuity and fail-closed coverage
         run: node --test acceptance/v17/tickerbot_continuity_gate.test.mjs
+      - name: Run bounded real LuxAlgo Federal Reserve ingestion
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+          LUXALGO_MAX_ITEMS: '9'
+        run: node acceptance/v10/luxalgo_federalreserve_once.mjs
       - name: Run bounded live GDELT DOC ingestion (raw evidence only)
         if: ${{ inputs.probe_gdelt_live }}
         env:

@@ -1,7 +1,7 @@
 // Manual-only bounded ingestion for the pinned LuxAlgo Federal Reserve adapter.
 import { createHash, randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { FEEDS, feedSnapshotHash, normalizeFeedRange } from './federalreserve_source.mjs';
+import { FEEDS, addQuarantineRetryState, feedSnapshotHash, normalizeFeedRange } from './federalreserve_source.mjs';
 const { Client } = pg;
 const connectionString = process.env.SUPABASE_SESSION_POOLER_URL;
 const maxItems = Number(process.env.LUXALGO_MAX_ITEMS ?? 9);
@@ -35,7 +35,14 @@ try {
   const prior = JSON.parse(cp.rows[0].cursor_value), snapshotSha256 = feedSnapshotHash(feeds);
   const startOffset = prior.snapshot_sha256 === snapshotSha256 && Number.isInteger(prior.next_offset) ? prior.next_offset : 0;
   const batch = normalizeFeedRange(feeds, retrievedAt, maxItems, startOffset), selected = batch.records;
-  const coverage = { upstream: 'LuxAlgo market-trackers federalreserve source', upstream_commit: '1ecfcca36a224d4758cc6e2e20cca216db43d5ee', feeds_attempted: feeds.length, feeds_succeeded: feeds.length, snapshot_sha256: snapshotSha256, ...batch.coverage, max_items: maxItems, note: batch.coverage.parseFailures ? 'Malformed source item blocks checkpoint advancement.' : batch.coverage.complete ? 'Fetched snapshot fully processed; archive depth remains undocumented.' : 'Bounded page persisted; durable raw offset committed for restart recovery.' };
+  const history = await client.query(`SELECT evidence->'coverage'->'quarantineRecords' AS records
+    FROM catalyst_acceptance.pipeline_runs
+    WHERE run_id<>$1 AND engine='government' AND evidence->>'source_key'=$2
+      AND evidence->'coverage'->>'snapshot_sha256'=$3
+    ORDER BY completed_at DESC NULLS LAST LIMIT 100`, [runId, sourceKey, snapshotSha256]);
+  const previousQuarantines = history.rows.flatMap(row => Array.isArray(row.records) ? row.records : []);
+  const quarantineRecords = addQuarantineRetryState(batch.quarantineRecords, previousQuarantines);
+  const coverage = { upstream: 'LuxAlgo market-trackers federalreserve source', upstream_commit: '1ecfcca36a224d4758cc6e2e20cca216db43d5ee', feeds_attempted: feeds.length, feeds_succeeded: feeds.length, snapshot_sha256: snapshotSha256, ...batch.coverage, quarantineRecords, max_items: maxItems, note: batch.coverage.parseFailures ? 'Malformed source item preserved in quarantine evidence; checkpoint remains held at the blocked offset for retry.' : batch.coverage.complete ? 'Fetched snapshot fully processed; archive depth remains undocumented.' : 'Bounded page persisted; durable raw offset committed for restart recovery.' };
   let inserted = 0, revisions = 0;
   for (const record of selected) {
     const payload = { source_record: record.raw, source_feed_url: record.feedUrl, retrieved_at: retrievedAt };
@@ -47,5 +54,12 @@ try {
   await client.query("insert into catalyst_acceptance.source_health(source_key,last_attempt_at,last_success_at,state,last_error) values($1,$2,$3,$4,$5) on conflict(source_key) do update set last_attempt_at=excluded.last_attempt_at,last_success_at=coalesce(excluded.last_success_at,catalyst_acceptance.source_health.last_success_at),state=excluded.state,last_error=excluded.last_error", [sourceKey, retrievedAt, batch.coverage.parseFailures ? null : retrievedAt, batch.coverage.parseFailures ? 'error' : 'healthy', batch.coverage.parseFailures ? `malformed_records:${batch.coverage.parseFailures}:offset:${batch.coverage.blockedOffset}` : null]);
   if (batch.coverage.parseFailures === 0) { const cursor = JSON.stringify({ version: 1, snapshot_sha256: snapshotSha256, next_offset: batch.coverage.nextOffset, records_available: batch.coverage.recordsAvailable }); await client.query("insert into catalyst_acceptance.checkpoints(source_key,cursor_value,last_completed_run) values($1,$2,$3) on conflict(source_key) do update set cursor_value=excluded.cursor_value,last_completed_run=excluded.last_completed_run,advanced_at=now()", [sourceKey, cursor, runId]); }
   await client.query('commit');
-  console.log(JSON.stringify({ pass: true, run_id: runId, checks: { three_feeds: feeds.length === 3, bounded: selected.length <= maxItems, raw_records_preserved: true, original_timestamps_preserved: true, checkpoint_committed_after_durable_page: batch.coverage.parseFailures === 0, malformed_items_block_checkpoint: true, raw_discoveries_not_queued_for_alerts: true }, coverage, inserted, revisions, outbox_created: 0 }));
+  const safeCoverage = { ...coverage, quarantineRecords: quarantineRecords.map(({ rawRecord, ...record }) => ({ ...record, rawRecordPreserved: true })) };
+  console.log(JSON.stringify({ pass: batch.coverage.parseFailures === 0, run_id: runId,
+    checks: { three_feeds: feeds.length === 3, bounded: selected.length <= maxItems, raw_records_preserved: true,
+      original_timestamps_preserved: true, malformed_evidence_preserved: quarantineRecords.length === batch.coverage.parseFailures,
+      retry_state_recorded: quarantineRecords.every(item => Number.isInteger(item.retryAttempt) && item.retryStatus === 'pending_reprocess'),
+      checkpoint_committed_after_durable_page: batch.coverage.parseFailures === 0, malformed_items_block_checkpoint: true,
+      raw_discoveries_not_queued_for_alerts: true }, coverage: safeCoverage, inserted, revisions, outbox_created: 0 }));
+  if (batch.coverage.parseFailures) process.exitCode = 1;
 } catch (error) { await client.query('rollback').catch(() => {}); console.error(JSON.stringify({ pass: false, error: String(error?.message ?? 'unknown').slice(0, 220) })); process.exitCode = 1; } finally { await client.end().catch(() => {}); }

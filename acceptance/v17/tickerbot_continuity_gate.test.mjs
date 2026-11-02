@@ -7,13 +7,13 @@ const cursor = 'cursor-before';
 const next = 'cursor-after';
 const query = { q: 'abs(change_1d_pct) >= 5 OR relative_volume >= 3 OR gap_pct >= 5',
   order: 'change_1d_pct', dir: 'desc', limit: 10, universe: null, asset_class: ['stocks'], full: false };
-const coverage = { in_scope_rows: 16030, columns: {
+const coverage = { in_scope_rows: 16030, measured_at: '2026-11-01T22:10:53.300Z', columns: {
   change_1d_pct: { null_rows: 3246, evaluable_rows: 12784 },
   gap_pct: { null_rows: 3111, evaluable_rows: 12919 },
   relative_volume: { null_rows: 3190, evaluable_rows: 12840 },
 } };
 const prior = { status: 'committed', evidence: { as_of: asOf, query, in_scope_rows: coverage.in_scope_rows,
-  null_coverage: coverage.columns } };
+  coverage: { null_coverage: coverage }, null_coverage: coverage.columns } };
 const response = (patch = {}) => ({ structuredContent: {
   as_of: asOf, query, count: 2, next_cursor: next,
   _meta: { null_coverage: coverage }, results: [{ ticker: 'AAA', relative_volume: null }, { ticker: 'BBB' }], ...patch,
@@ -26,6 +26,7 @@ test('advances a same-snapshot page while retaining partial-coverage status', ()
   assert.equal(result.safeToAdvanceCheckpoint, true);
   assert.equal(result.sourceComplete, false);
   assert.equal(result.marketCoverage, 'partial_or_unproven');
+  assert.equal(result.nextCursor, next);
 });
 
 test('rejects a provider invalid-cursor response without advancing', () => {
@@ -51,6 +52,23 @@ test('rejects data or universe changes between pages even when as-of is pinned',
   changed.columns.change_1d_pct = { null_rows: 3203, evaluable_rows: 12805 };
   const result = assess({ response: response({ _meta: { null_coverage: changed } }) });
   assert.ok(result.reasons.includes('coverage_snapshot_changed'));
+  assert.equal(result.nextCursor, null);
+});
+
+test('rejects a changed coverage measurement snapshot even when counts match', () => {
+  const result = assess({ response: response({ _meta: { null_coverage: {
+    ...coverage, measured_at: '2026-11-01T22:10:54.000Z',
+  } } }) });
+  assert.ok(result.reasons.includes('coverage_snapshot_changed'));
+  assert.equal(result.nextCursor, null);
+});
+
+test('rejects missing or malformed coverage measurement timestamps', () => {
+  for (const patch of [{ measured_at: undefined }, { measured_at: 'unknown' }]) {
+    const result = assess({ response: response({ _meta: { null_coverage: { ...coverage, ...patch } } }) });
+    assert.ok(result.reasons.includes('coverage_metadata_unavailable'));
+    assert.equal(result.nextCursor, null);
+  }
 });
 
 test('rejects the observed stored-cursor page when universe counts and null coverage changed', () => {
@@ -120,4 +138,52 @@ test('fails closed when a provider explicitly reports that a cursor expired', ()
   assert.equal(result.safeToAdvanceCheckpoint, false);
   assert.ok(result.reasons.includes('provider_cursor_expired'));
   assert.equal(result.sourceComplete, false);
+  assert.equal(result.nextCursor, null);
+});
+
+test('compares the complete provider query and ignores only object key order', () => {
+  const reordered = Object.fromEntries(Object.entries(query).reverse());
+  assert.equal(assess({ response: response({ query: reordered }) }).safeToAdvanceCheckpoint, true);
+  for (const patch of [
+    { asset_type: 'CS' },
+    { columns: ['ticker'] },
+    { fields: 'ticker' },
+    { filters: { security: { include: ['CS', 'WARRANT'] } } },
+  ]) {
+    const result = assess({ response: response({ query: { ...query, ...patch } }) });
+    assert.ok(result.reasons.includes('query_scope_changed'));
+    assert.equal(result.nextCursor, null);
+  }
+});
+
+test('rejects malformed, negative, empty, and internally inconsistent coverage', () => {
+  const malformed = [
+    { in_scope_rows: -1, columns: coverage.columns },
+    { in_scope_rows: 16030, columns: {} },
+    { in_scope_rows: 16030, columns: { signal: { null_rows: -1, evaluable_rows: 16031 } } },
+    { in_scope_rows: 16030, columns: { signal: { null_rows: 10, evaluable_rows: 10 } } },
+    { in_scope_rows: 16030, columns: { signal: [{ null_rows: 1, evaluable_rows: 16029 }] } },
+  ];
+  for (const bad of malformed) {
+    const result = assess({ response: response({ _meta: { null_coverage: bad } }) });
+    assert.ok(result.reasons.includes('coverage_metadata_unavailable'));
+    assert.equal(result.nextCursor, null);
+  }
+  const result = assess({ previousRun: { status: 'committed', evidence: {
+    as_of: asOf, query, in_scope_rows: -1,
+    null_coverage: { signal: { null_rows: -1, evaluable_rows: 16031 } },
+  } } });
+  assert.ok(result.reasons.includes('coverage_metadata_unavailable'));
+  assert.equal(result.nextCursor, null);
+});
+
+test('rejects malformed history-revision metadata and hides terminal success', () => {
+  const result = assess({ response: response({ next_cursor: null, _meta: {
+    null_coverage: coverage,
+    history_revised_at: ['not-a-revision-map'],
+  } }) });
+  assert.ok(result.reasons.includes('historical_revision_metadata_invalid'));
+  assert.equal(result.safeToAdvanceCheckpoint, false);
+  assert.equal(result.nextCursor, null);
+  assert.equal(result.terminalPage, false);
 });

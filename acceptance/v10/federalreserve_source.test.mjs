@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FEEDS, LUXALGO_COMMIT, easternTimestampToIso, itemIdFromLink, normalizeFedItem, normalizeBoundedFeeds, feedSnapshotHash, normalizeFeedRange } from './federalreserve_source.mjs';
+import { FEEDS, LUXALGO_COMMIT, addQuarantineRetryState, easternTimestampToIso, itemIdFromLink, normalizeFedItem, normalizeBoundedFeeds, feedSnapshotHash, normalizeFeedRange } from './federalreserve_source.mjs';
 test('pins LuxAlgo commit and three public Fed feeds', () => { assert.equal(LUXALGO_COMMIT, '1ecfcca36a224d4758cc6e2e20cca216db43d5ee'); assert.equal(FEEDS.length, 3); });
 test('normalizes speech and preserves source title, timestamp, and identity', () => { const raw={d:'8/5/2026 4:05:00 PM',t:'Original title',l:'/newsevents/speech/cook20260805a.htm'}; const n=normalizeFedItem(raw,'speech',FEEDS[0].url,'2026-11-01T00:00:00.000Z'); assert.equal(n.id,'speech/cook20260805a'); assert.equal(n.title,raw.t); assert.equal(n.sourceTimestamp,raw.d); assert.equal(n.eventTime,'2026-08-05T20:05:00.000Z'); });
 test('uses IANA DST rules for summer and winter timestamps', () => { assert.equal(easternTimestampToIso('8/5/2026 4:05:00 PM'),'2026-08-05T20:05:00.000Z'); assert.equal(easternTimestampToIso('1/5/2026 4:05:00 PM'),'2026-01-05T21:05:00.000Z'); });
@@ -9,3 +9,33 @@ test('rejects missing required source fields', () => { assert.throws(()=>normali
 test('bounds raw processing and identifies malformed records', () => { const feeds=[{url:FEEDS[0].url,items:[{d:'8/5/2026 4:05:00 PM',t:'Bad link',l:''},{d:'8/5/2026 4:06:00 PM',t:'Valid',l:'/newsevents/speech/valid.htm'},{d:'8/5/2026 4:07:00 PM',t:'Tail',l:'/newsevents/speech/tail.htm'}]}]; const r=normalizeBoundedFeeds(feeds,'2026-11-01T00:00:00.000Z',2); assert.equal(r.coverage.recordsProcessed,2); assert.equal(r.coverage.parseFailures,1); assert.equal(r.coverage.complete,false); });
 test('continues durable bounded offsets across feed boundaries', () => { const feeds=[{url:FEEDS[0].url,items:[{d:'8/5/2026 4:05:00 PM',t:'One',l:'/newsevents/speech/one.htm'},{d:'8/5/2026 4:06:00 PM',t:'Two',l:'/newsevents/speech/two.htm'}]},{url:FEEDS[1].url,items:[{d:'8/5/2026 4:07:00 PM',t:'Three',l:'/newsevents/testimony/three.htm'}]}]; const hash=feedSnapshotHash(feeds); const a=normalizeFeedRange(feeds,'2026-11-01T00:00:00.000Z',2,0); const b=normalizeFeedRange(feeds,'2026-11-01T00:01:00.000Z',2,a.coverage.nextOffset); assert.equal(hash,feedSnapshotHash(feeds)); assert.equal(a.coverage.nextOffset,2); assert.equal(a.coverage.complete,false); assert.equal(b.records[0].id,'testimony/three'); assert.equal(b.coverage.complete,true); });
 test('holds the durable offset at a malformed item', () => { const feeds=[{url:FEEDS[0].url,items:[{d:'8/5/2026 4:05:00 PM',t:'Valid',l:'/newsevents/speech/valid.htm'},{d:'8/5/2026 4:06:00 PM',t:'Malformed',l:''},{d:'8/5/2026 4:07:00 PM',t:'After malformed',l:'/newsevents/speech/after.htm'}]}]; const r=normalizeFeedRange(feeds,'2026-11-01T00:00:00.000Z',3,0); assert.equal(r.coverage.blockedOffset,1); assert.equal(r.coverage.nextOffset,1); assert.equal(r.coverage.complete,false); });
+
+test('preserves malformed source item, identity, reason, and held-checkpoint implications for replay', () => {
+  const malformed = { d:'bad timestamp',t:'Original malformed item',l:'/newsevents/speech/bad.htm',extra:'preserve-me' };
+  const feeds=[{url:FEEDS[0].url,items:[
+    {d:'8/5/2026 4:05:00 PM',t:'Valid before failure',l:'/newsevents/speech/valid-before.htm'},
+    malformed,
+    {d:'8/5/2026 4:07:00 PM',t:'Must not pass the failure',l:'/newsevents/speech/after.htm'},
+  ]}];
+  const first=normalizeFeedRange(feeds,'2026-11-02T00:00:00.000Z',3,0);
+  assert.equal(first.records.length,1);
+  assert.equal(first.records[0].title,'Valid before failure');
+  assert.equal(first.coverage.blockedOffset,1);
+  assert.equal(first.coverage.nextOffset,1);
+  assert.deepEqual(first.quarantineRecords[0].rawRecord,malformed);
+  assert.equal(first.quarantineRecords[0].sourceEventId,'speech/bad');
+  assert.equal(first.quarantineRecords[0].sourceOffset,1);
+  assert.equal(first.quarantineRecords[0].failureReason,'invalid_source_timestamp');
+  assert.equal(first.quarantineRecords[0].retryStatus,'pending_reprocess');
+  assert.equal(first.quarantineRecords[0].checkpointImplication,'held_at_blocked_source_offset');
+
+  const firstAttempt=addQuarantineRetryState(first.quarantineRecords);
+  const retry=normalizeFeedRange(feeds,'2026-11-02T00:01:00.000Z',3,first.coverage.nextOffset);
+  const secondAttempt=addQuarantineRetryState(retry.quarantineRecords,firstAttempt);
+  assert.equal(retry.records.length,0);
+  assert.equal(retry.coverage.nextOffset,1);
+  assert.equal(secondAttempt[0].quarantineKey,firstAttempt[0].quarantineKey);
+  assert.equal(secondAttempt[0].retryAttempt,2);
+  assert.equal(secondAttempt[0].retryStatus,'pending_reprocess');
+  assert.deepEqual(secondAttempt[0].rawRecord,malformed);
+});

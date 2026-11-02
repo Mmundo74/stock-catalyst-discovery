@@ -83,6 +83,7 @@ export function normalizeFeedRange(feeds, retrievedAt, maxRecords, startOffset =
   const inScopeAvailable = feeds.reduce((n, feed, i) => n + feed.items.filter(raw => FEEDS[i].type !== null || raw.pt === 'Monetary Policy').length, 0);
   const records = [];
   let absoluteOffset = 0, processed = 0, parseFailures = 0, outOfScopeProcessed = 0, blockedOffset = null;
+  const quarantineRecords = [];
   for (let i = 0; i < feeds.length; i++) {
     for (const raw of feeds[i].items) {
       if (absoluteOffset < startOffset) { absoluteOffset++; continue; }
@@ -92,10 +93,44 @@ export function normalizeFeedRange(feeds, retrievedAt, maxRecords, startOffset =
         const normalized = normalizeFedItem(raw, FEEDS[i].type, feeds[i].url, retrievedAt);
         if (normalized) records.push({ raw, feedUrl: feeds[i].url, ...normalized });
         else outOfScopeProcessed++;
-      } catch { parseFailures++; blockedOffset = itemOffset; }
+      } catch (error) {
+        parseFailures++;
+        blockedOffset = itemOffset;
+        const rawFingerprint = createHash('sha256').update(JSON.stringify(raw)).digest('hex');
+        let sourceEventId = null;
+        try { sourceEventId = itemIdFromLink(raw?.l); } catch {}
+        quarantineRecords.push({
+          quarantineKey: createHash('sha256').update(`${feeds[i].url}\0${rawFingerprint}`).digest('hex'),
+          sourceEventId,
+          sourceIdentity: sourceEventId ? `event:${sourceEventId}` : `unresolved:${feeds[i].url}:${itemOffset}:${rawFingerprint}`,
+          sourceLink: typeof raw?.l === 'string' ? raw.l : null,
+          sourceFeedUrl: feeds[i].url,
+          sourceOffset: itemOffset,
+          rawFingerprint,
+          failureReason: typeof error?.message === 'string' && /^[a-z0-9_]{1,100}$/.test(error.message)
+            ? error.message : 'source_item_normalization_failed',
+          retryStatus: 'pending_reprocess',
+          checkpointImplication: 'held_at_blocked_source_offset',
+          rawRecord: raw,
+        });
+      }
     }
     if (processed >= maxRecords || blockedOffset !== null) break;
   }
   const nextOffset = blockedOffset === null ? startOffset + processed : blockedOffset;
-  return { records, coverage: { recordsAvailable: available, recordsInScopeAvailable: inScopeAvailable, recordsProcessed: processed, recordsSelected: records.length, recordsOutOfScopeProcessed: outOfScopeProcessed, parseFailures, blockedOffset, startOffset, nextOffset, complete: nextOffset === available && parseFailures === 0 } };
+  return { records, quarantineRecords, coverage: { recordsAvailable: available, recordsInScopeAvailable: inScopeAvailable, recordsProcessed: processed, recordsSelected: records.length, recordsOutOfScopeProcessed: outOfScopeProcessed, parseFailures, blockedOffset, startOffset, nextOffset, complete: nextOffset === available && parseFailures === 0 } };
+}
+
+export function addQuarantineRetryState(quarantineRecords, previousRecords = []) {
+  if (!Array.isArray(quarantineRecords) || !Array.isArray(previousRecords)) throw new TypeError('invalid_quarantine_history');
+  const attempts = new Map();
+  for (const record of previousRecords) {
+    if (record && typeof record.quarantineKey === 'string') {
+      attempts.set(record.quarantineKey, (attempts.get(record.quarantineKey) ?? 0) + 1);
+    }
+  }
+  return quarantineRecords.map(record => ({ ...record,
+    retryAttempt: (attempts.get(record.quarantineKey) ?? 0) + 1,
+    retryStatus: 'pending_reprocess',
+  }));
 }

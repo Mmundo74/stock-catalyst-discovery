@@ -9,6 +9,10 @@ newer than the pinned asof; corrections already included by that historical
 view do not, by themselves, make continuation unsafe. Rejection leaves the
 durable checkpoint unchanged.
 
+For rejected pages, `nextCursor` is returned as `null` even if the provider
+included a cursor. This keeps downstream checkpoint code fail-closed if it
+forgets to separately inspect `safeToAdvanceCheckpoint`.
+
 sourceComplete remains false and marketCoverage remains
 partial_or_unproven, including when a provider returns a terminal cursor.
 Signal-column NULLs remain unevaluated and are reported as such; they are not
@@ -44,3 +48,13 @@ Provider cursor contract currently exposes an opaque next_cursor and may
 reject an invalid cursor. No cursor expiration period is assumed. Tests use
 fixtures; live-provider observation above is a separate bounded read and does
 not establish full-market completeness.
+
+## Security-type probe — 2026-11-02
+
+A current bounded scan confirmed that `asset_class=stocks` includes acquisition
+units, rights, and warrants in the first ten results. A read-only scan adding
+`asset_type = 'CS'` returned common-stock rows only; the provider accepted the
+predicate and exposed 683 NULL asset-type rows in its coverage metadata. This
+proves a usable classification filter exists, but does not show that `CS` alone
+covers ADRs or other desired equity types. The existing stored market page was
+not rewritten and its checkpoint was not advanced.
