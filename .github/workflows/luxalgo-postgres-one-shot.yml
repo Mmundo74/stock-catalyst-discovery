@@ -1,16 +1,18 @@
 name: LuxAlgo pinned PostgreSQL one-shot acceptance
-
 # Manual only: no push, pull_request, cron, or repository_dispatch triggers.
 on:
   workflow_dispatch:
-
+    inputs:
+      probe_gdelt_live:
+        description: 'Run one bounded live GDELT request (rate-limited; default off)'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
-
 concurrency:
   group: luxalgo-pg-one-shot
   cancel-in-progress: false
-
 jobs:
   acceptance:
     runs-on: ubuntu-latest
@@ -26,10 +28,7 @@ jobs:
         env:
           DB_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
         run: |
-          if [ -z "$DB_URL" ]; then
-            echo 'Missing secret SUPABASE_SESSION_POOLER_URL; do not paste it into logs.' >&2
-            exit 1
-          fi
+          if [ -z "$DB_URL" ]; then echo 'Missing secret SUPABASE_SESSION_POOLER_URL; do not paste it into logs.' >&2; exit 1; fi
       - name: Retrieve exact pinned LuxAlgo source (no modifications)
         run: |
           mkdir -p vendor/luxalgo
@@ -44,9 +43,7 @@ jobs:
         run: npm install --no-save --ignore-scripts --no-audit --no-fund pg@8.16.0
       - name: Fetch official Supabase root CA for TLS verification
         run: |
-          curl --fail --location --silent --show-error \
-            --output "$RUNNER_TEMP/supabase-root-ca.crt" \
-            https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
+          curl --fail --location --silent --show-error --output "$RUNNER_TEMP/supabase-root-ca.crt" https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
           grep -Fq -- '-----BEGIN CERTIFICATE-----' "$RUNNER_TEMP/supabase-root-ca.crt"
           grep -Fq -- '-----END CERTIFICATE-----' "$RUNNER_TEMP/supabase-root-ca.crt"
       - name: Bounded database authentication preflight
@@ -56,38 +53,14 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import pg from 'pg';
-          const expected = {
-            protocol: 'postgresql:',
-            hostname: 'aws-0-us-west-1.pooler.supabase.com',
-            port: '5432',
-            database: '/postgres',
-            username: 'scd_luxalgo_acceptance.yeojyalevdljuddehukn',
-            sslmode: 'require'
-          };
+          const expected={protocol:'postgresql:',hostname:'aws-0-us-west-1.pooler.supabase.com',port:'5432',database:'/postgres',username:'scd_luxalgo_acceptance.yeojyalevdljuddehukn',sslmode:'require'};
           let client;
-          try {
-            const url = new URL(process.env.SUPABASE_SESSION_POOLER_URL);
-            const checks = {
-              protocol: url.protocol === expected.protocol,
-              hostname: url.hostname === expected.hostname,
-              port: url.port === expected.port,
-              database: url.pathname === expected.database,
-              username: decodeURIComponent(url.username) === expected.username,
-              sslmode: url.searchParams.get('sslmode') === expected.sslmode
-            };
-            console.log(JSON.stringify({phase:'url_preflight', checks}));
-            if (Object.values(checks).some(v => !v)) process.exit(2);
-            client = new pg.Client({connectionString:url.toString(), connectionTimeoutMillis:8000});
-            await client.connect();
-            const {rows} = await client.query('select current_user = $1 as role_ok, current_database() = $2 as database_ok', ['scd_luxalgo_acceptance','postgres']);
-            console.log(JSON.stringify({phase:'auth_preflight', ...rows[0]}));
-            if (!rows[0].role_ok || !rows[0].database_ok) process.exitCode = 3;
-          } catch (error) {
-            console.error(JSON.stringify({phase:'auth_preflight', pass:false, error_code:error?.code ?? 'URL_OR_CLIENT_ERROR'}));
-            process.exitCode = 1;
-          } finally {
-            if (client) await client.end().catch(() => {});
-          }
+          try { const url=new URL(process.env.SUPABASE_SESSION_POOLER_URL);
+            const checks={protocol:url.protocol===expected.protocol,hostname:url.hostname===expected.hostname,port:url.port===expected.port,database:url.pathname===expected.database,username:decodeURIComponent(url.username)===expected.username,sslmode:url.searchParams.get('sslmode')===expected.sslmode};
+            console.log(JSON.stringify({phase:'url_preflight',checks})); if(Object.values(checks).some(v=>!v))process.exit(2);
+            client=new pg.Client({connectionString:url.toString(),connectionTimeoutMillis:8000});await client.connect();
+            const {rows}=await client.query('select current_user = $1 as role_ok, current_database() = $2 as database_ok',['scd_luxalgo_acceptance','postgres']);console.log(JSON.stringify({phase:'auth_preflight',...rows[0]}));if(!rows[0].role_ok||!rows[0].database_ok)process.exitCode=3;
+          } catch(error){console.error(JSON.stringify({phase:'auth_preflight',pass:false,error_code:error?.code??'URL_OR_CLIENT_ERROR'}));process.exitCode=1;}finally{if(client)await client.end().catch(()=>{});}
           NODE
       - name: Run native driver acceptance (temporary tables only)
         env:
@@ -107,53 +80,37 @@ jobs:
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
           LUXALGO_MAX_ITEMS: '9'
         run: node acceptance/v10/luxalgo_federalreserve_once.mjs
-
       - name: Test independent news and market adapter normalization
         run: node --test acceptance/v11/discovery_adapters.test.mjs
-
-
       - name: Test fail-closed discovery coverage gate
         run: node --test acceptance/v11/coverage_gate.test.mjs
-
-
       - name: Test durable notification outbox claims (no external delivery)
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node acceptance/v12/notification_outbox_acceptance.mjs
-
       - name: Test outbox worker input and lease safeguards
         run: node --test acceptance/v12/outbox_worker.test.mjs
-
-
       - name: Test research qualification stage and fail-closed evidence rules
         run: node --test acceptance/v13/research_qualification.test.mjs
-
       - name: Test durable research qualification persistence (transaction rolls back)
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node acceptance/v13/qualification_persistence_acceptance.mjs
-
-
       - name: Test opt-in idempotent Make notification adapter (mock transport only)
         run: node --test acceptance/v14/make_delivery_adapter.test.mjs
-
-
       - name: Test independent ScienceDaily RSS source adapter
         run: node --test acceptance/v15/sciencedaily_rss.test.mjs
-
       - name: Run bounded live ScienceDaily RSS snapshot ingestion
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node acceptance/v15/sciencedaily_rss_once.mjs
-
-
       - name: Test independent GDELT DOC news adapter
         run: node --test acceptance/v16/gdelt_doc_news.test.mjs
-
       - name: Run bounded live GDELT DOC ingestion (raw evidence only)
+        if: ${{ inputs.probe_gdelt_live }}
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
