@@ -334,3 +334,11 @@
 - News-source review retained Exa, ScienceDaily, and GDELT. Wikinews is read-only since May 4, 2026; The Conversation’s terms do not establish free systematic commercial reuse for this investment use. No alternative feed was integrated without clear permitted continuity and free-use terms. GDELT live requests remain disabled after HTTP 429.
 - Offline tests: V17 targeted suite **9 passed, 0 failed**; full local suite **242 passed, 0 failed**; `git diff --check` passed. Hosted workflow and post-run checkpoint readback are pending. No notification route was called; acceptance backlog remains unbroadcast.
 - Status: implemented and offline-tested; Tickerbot live pagination is not safe to resume while provider snapshot metadata drifts. Independent news remains partial. No engine or end-to-end alert service is operational.
+
+
+## Tickerbot cursor-expiry fail-closed regression — 2026-11-02
+
+- Added an explicit provider cursor-expiry classification to the V17 continuation gate. HTTP 410, `cursor_expired`, or an explicit expiry message now produces `provider_cursor_expired` and blocks checkpoint advancement. This handles the error response only; it does not reset the cursor or claim provider expiry was observed live.
+- Added a synthetic HTTP 410 regression. Targeted V17 suite: **10 passed, 0 failed**. Full acceptance suite: **243 passed, 0 failed**. These remain offline tests.
+- Existing workflow run #30 (41371993262) passed on commit `2433728`; GDELT was skipped. Database readback confirmed Federal Reserve offset 153, ScienceDaily snapshot unchanged at 60 with incomplete coverage, and Tickerbot cursor unchanged. Pending outbox rows remained untouched; no external notification was sent.
+- Preserved all discovery engines and existing infrastructure. Tickerbot live continuation remains blocked by provider snapshot drift; market coverage remains partial.
