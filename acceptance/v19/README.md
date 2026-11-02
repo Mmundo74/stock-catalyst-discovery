@@ -26,16 +26,24 @@ PatentsView may require a free API key for normal collection; optional API keys 
 improve rate limits for some sources. Missing credentials or an upstream error must be
 recorded as a failed source, never counted as full coverage.
 
-The existing manual-only workflow now builds this exact upstream revision, runs all 17
-implemented collectors with durable native cursors in the isolated `luxalgo_native`
-schema, exports their datasets, and transactionally replays normalized evidence into the
-existing shared event/revision tables. Federal Reserve communications reuse the existing
-collector's source key and native event IDs, preventing the same Fed item from appearing
-twice under two source identities. The bridge uses idempotent event identities and
-append-only revisions; source-health and import checkpoint updates commit atomically with
-the evidence. It creates no notification outbox rows. The manual hosted execution is not
-yet verified, so this integration must not be described as operational until that run
-passes against the exact published commit.
+The existing manual-only workflow builds this exact upstream revision, runs a bounded
+allowlist of 15 non-SEC collectors with durable native cursors in the isolated
+`luxalgo_native` schema, exports their datasets, and transactionally replays dated
+normalized events into the shared event/revision tables. `edgar` and `edgar-bulk` remain
+excluded until SEC collection is authorized; the coverage gate still expects all 17
+sources, so coverage remains partial. Federal Reserve communications reuse the existing
+collector's source key and native event IDs to avoid duplicate identities. Undated rows
+are written to the RLS-protected `catalyst_acceptance.evidence_quarantine` table with
+their complete normalized source payload, failure reason, and retry status; they are not
+given an invented event date or admitted as catalyst events. Dated evidence, quarantine,
+source health, and the import checkpoint commit atomically. No notification outbox rows
+are created.
+
+Hosted runs #36 and #37 reached the project database and collected native LuxAlgo data,
+but the shared-evidence import failed because `events.event_time` is required. Run #37
+identified PostgreSQL SQLSTATE 23502 during `persist_shared_evidence`. The quarantine
+path is implemented and the additive migration is applied, but its hosted retry is still
+required before the integrated bridge can be called working.
 
 Source results also carry the upstream parser counters. A source with
 `parseAttempted != parseSucceeded` is recorded as failed with
@@ -51,6 +59,6 @@ parse counts, row counts, and safe failure codes.
 
 LuxAlgo rows preserve normalized source evidence and attribution but do not necessarily
 contain the upstream HTTP response body. Its native store remains the durable source
-checkpoint. Shared import always replays full bounded snapshots, which makes a retry
-after an interrupted bridge safe and avoids advancing the import checkpoint before
-evidence is committed.
+checkpoint. Shared import always replays bounded snapshots idempotently, so retries after
+an interrupted bridge do not duplicate revisions or advance the shared import checkpoint
+before dated events and quarantined records are committed.

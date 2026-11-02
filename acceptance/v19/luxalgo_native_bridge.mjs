@@ -82,10 +82,11 @@ export function buildLuxAlgoEvidenceBatch(syncSummary, datasetRows) {
       coverageComplete: false,
     };
   });
-  const coverage = assessLuxAlgoCoverage(results);
   const unknownDatasets = Object.keys(datasetRows).filter((id) => !Object.hasOwn(LUXALGO_DATASETS, id));
   if (unknownDatasets.length) throw new TypeError('unknown_luxalgo_export_dataset');
   const records = [];
+  const quarantinedRecords = [];
+  const eventTimeMissingBySource = new Map();
   const emptyDatasets = [];
   const missingDatasets = [];
   for (const dataset of Object.keys(LUXALGO_DATASETS)) {
@@ -93,15 +94,31 @@ export function buildLuxAlgoEvidenceBatch(syncSummary, datasetRows) {
     if (rows === undefined) { missingDatasets.push(dataset); continue; }
     if (!Array.isArray(rows)) throw new TypeError('invalid_luxalgo_dataset_export');
     if (rows.length === 0) emptyDatasets.push(dataset);
-    records.push(...normalizeLuxAlgoRows(dataset, rows));
+    for (const record of normalizeLuxAlgoRows(dataset, rows)) {
+      if (record.eventTime === null) {
+        const sourceId = record.sourcePayload.record.provenance.source;
+        eventTimeMissingBySource.set(sourceId, (eventTimeMissingBySource.get(sourceId) ?? 0) + 1);
+        quarantinedRecords.push({ ...record, failureReason: 'event_time_missing', retryStatus: 'pending_reprocess' });
+      } else records.push(record);
+    }
   }
+  for (const result of results) {
+    const missingEventTimeCount = eventTimeMissingBySource.get(result.source) ?? 0;
+    result.eventTimeMissingCount = missingEventTimeCount;
+    if (missingEventTimeCount > 0 && !result.error) {
+      result.error = 'source_event_time_missing';
+      result.ok = false;
+    }
+  }
+  const coverage = assessLuxAlgoCoverage(results);
   return {
-    records, sourceResults: results, coverage: {
+    records, quarantinedRecords, sourceResults: results, coverage: {
       ...coverage,
       datasetsObserved: Object.keys(datasetRows).length,
       datasetsWithoutRows: emptyDatasets,
       missingDatasets,
       allDatasetsExported: Object.keys(datasetRows).length === Object.keys(LUXALGO_DATASETS).length,
+      eventTimeMissingRecordCount: quarantinedRecords.length,
       sourceComplete: false,
       coverageComplete: false,
       upstreamSummaryOk: syncSummary.ok === true,

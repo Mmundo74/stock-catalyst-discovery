@@ -1,5 +1,12 @@
 # Change Log — 2026-11-02
 
+## Preserve LuxAlgo rows without event timestamps
+
+- Hosted run #37 reported safe PostgreSQL SQLSTATE `23502` during `persist_shared_evidence`. The existing `catalyst_acceptance.events.event_time` is `NOT NULL`; upstream snapshots include records without a source event timestamp, so the bridge tried to insert `NULL` and rolled back the import.
+- Added an additive RLS-protected `catalyst_acceptance.evidence_quarantine` table. Rows without a trustworthy event time now retain their full source payload, URL, observed time, identity, fingerprint, failure reason, attempt count, and retry status there. The bridge does not invent dates; only dated records enter catalyst events. A later replay with a valid date marks the matching quarantine identity reprocessed.
+- Kept evidence, quarantine writes, source-health state, and the import checkpoint in one transaction; chunked event/revision writes and grouped quarantine-recovery updates to keep broad catalog imports bounded. The migration grants SELECT/INSERT/UPDATE only to `scd_luxalgo_acceptance`, with RLS enabled and no DELETE privilege; anon, authenticated, service_role, and PUBLIC have no table access.
+- Applied the additive migration to Supabase and read back its RLS and ACLs: the acceptance role has SELECT/INSERT/UPDATE only; DELETE and anon/authenticated/service_role SELECT are denied. Local targeted LuxAlgo tests: **21 passed, 0 failed**. Full offline regression: **292 passed, 0 failed**; checksum manifest verification and `git diff --check` passed. Hosted retry remains pending; run #37 was not treated as acceptance.
+
 ## Hosted LuxAlgo run and bridge failure diagnostics
 
 - Published the recovered development history and the follow-up non-SEC source allowlist; exact branch tip `a06a3e147c14a241fca6d52b7cb650357cab13c9`. Manual workflow run **#36** used this commit and passed database authentication, isolated PostgreSQL persistence, research/outbox safeguards, all offline adapter suites, the bounded ScienceDaily and News Central ingestions, and the Federal Reserve LuxAlgo ingestion.

@@ -13,8 +13,9 @@ function makeBatch(summary = { ok: true, results: LUXALGO_SOURCES.map((source) =
 }
 
 class MockClient {
-  constructor({ failRevision = false, duplicateRevision = false } = {}) {
+  constructor({ failRevision = false, duplicateRevision = false, failQuarantine = false } = {}) {
     this.calls=[]; this.inTransaction=false; this.failRevision=failRevision; this.duplicateRevision=duplicateRevision;
+    this.failQuarantine=failQuarantine;
   }
   async query(sql, params=[]) {
     this.calls.push({sql:String(sql).replace(/\s+/g,' ').trim(),params});
@@ -22,6 +23,7 @@ class MockClient {
     if(q==='BEGIN'){this.inTransaction=true;return {rowCount:0};}
     if(q==='COMMIT'){this.inTransaction=false;return {rowCount:0};}
     if(q==='ROLLBACK'){this.inTransaction=false;return {rowCount:0};}
+    if(q.startsWith('INSERT INTO catalyst_acceptance.evidence_quarantine') && this.failQuarantine) throw new Error('injected');
     if(q.startsWith('INSERT INTO catalyst_acceptance.event_revisions') && this.failRevision) throw new Error('injected');
     if(q.startsWith('INSERT INTO catalyst_acceptance.event_revisions')) return {rowCount:this.duplicateRevision?0:1};
     return {rowCount:1};
@@ -76,4 +78,40 @@ test('failed persistence rolls back and does not advance the shared import check
   assert.ok(client.calls.some((c)=>c.sql==='ROLLBACK'));
   assert.equal(client.calls.some((c)=>c.sql.startsWith('INSERT INTO catalyst_acceptance.checkpoints')),false);
   assert.ok(client.calls.some((c)=>c.sql.includes("status='failed'")));
+});
+
+test('undated raw rows are durably quarantined while dated records and checkpoints commit', async () => {
+  const provenance = (id) => ({ source: 'federalreserve', sourceUrl: `https://www.federalreserve.gov/${id}`,
+    retrievedAt: '2026-11-02T00:00:00Z', parser: 'fed-test@1' });
+  const summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true,
+    ...(source === 'federalreserve' ? { parseAttempted: 2, parseSucceeded: 2 } : {}) })) };
+  const batch = buildLuxAlgoEvidenceBatch(summary, { 'fed-communications': [
+    { id: 'dated-speech', title: 'Dated speech', date: '2026-11-02', provenance: provenance('dated') },
+    { id: 'undated-speech', title: 'Undated speech', provenance: provenance('undated') },
+  ] });
+  const client = new MockClient();
+  const result = await persistLuxAlgoEvidenceBatch(client, batch, 'lux_test_quarantine');
+  assert.equal(result.persisted.events, 1);
+  assert.equal(result.evidence.quarantined_records, 1);
+  const quarantine = client.calls.find((call) => call.sql.startsWith('INSERT INTO catalyst_acceptance.evidence_quarantine'));
+  assert.ok(quarantine, 'quarantine write is part of the import transaction');
+  assert.equal(JSON.parse(quarantine.params[8]).record.id, 'undated-speech');
+  const sourceHealth = client.calls.find((call) => call.sql.includes('INSERT INTO catalyst_acceptance.source_health') &&
+    call.params[0] === 'luxalgo:federalreserve');
+  assert.equal(sourceHealth.params[1], 'error');
+  assert.equal(sourceHealth.params[2], 'source_event_time_missing');
+  assert.ok(client.calls.findIndex((call) => call.sql.startsWith('INSERT INTO catalyst_acceptance.evidence_quarantine')) <
+    client.calls.findIndex((call) => call.sql.startsWith("INSERT INTO catalyst_acceptance.checkpoints")));
+  assert.ok(client.calls.some((call) => call.sql === 'COMMIT'));
+});
+
+test('quarantine write failure rolls back the import and leaves its checkpoint unchanged', async () => {
+  const summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true })) };
+  const batch = buildLuxAlgoEvidenceBatch(summary, { 'fed-communications': [{ id: 'undated-speech', title: 'Undated',
+    provenance: { source: 'federalreserve', sourceUrl: 'https://www.federalreserve.gov/undated',
+      retrievedAt: '2026-11-02T00:00:00Z', parser: 'fed-test@1' } }] });
+  const client = new MockClient({ failQuarantine: true });
+  await assert.rejects(persistLuxAlgoEvidenceBatch(client,batch,'lux_test_quarantine_rollback'),/durable_import_failed/);
+  assert.ok(client.calls.some((call) => call.sql === 'ROLLBACK'));
+  assert.equal(client.calls.some((call) => call.sql.startsWith("INSERT INTO catalyst_acceptance.checkpoints")),false);
 });

@@ -81,9 +81,19 @@ test('all 18 exported datasets normalize with their declared source provenance',
 test('native evidence bridge inventories every dataset and imports full snapshots without claiming completeness', () => {
   assert.equal(Object.keys(LUXALGO_EXPORT_DIRS).length, 18);
   const syncSummary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true })) };
+  const dateFields = {
+    'congress-trades':['transactedAt'], 'insider-transactions':['filedAt'], 'thirteenf-holdings':['periodEnd'],
+    'gov-contracts':['actionDate'], 'gov-grants':['actionDate'], 'lobbying-filings':['filingYear'],
+    'short-volume':['date'], 'committee-assignments':['effectiveDate'], patents:['grantDate'],
+    'clinical-trials':['lastUpdated'], 'fda-approvals':['statusDate'], 'cot-reports':['reportDate'],
+    'wiki-pageviews':['day'], bills:['latestActionDate'], 'fec-candidates':['cycle'],
+    'fec-contributions':['date'], 'congress-hearings':['heldDate'], 'fed-communications':['date'],
+  };
   const datasetRows = Object.fromEntries(Object.entries(LUXALGO_DATASETS).map(([dataset, sources]) => [dataset, [{
     id: `row-${dataset}`, title: dataset, provenance: { source: sources[0],
       sourceUrl: 'https://example.gov/record', retrievedAt: '2026-11-02T00:00:00Z', parser: 'fixture@1' },
+    ...Object.fromEntries(dateFields[dataset].map((field) => [field,
+      ['filingYear','cycle'].includes(field) ? '2026' : '2026-11-02'])) ,
   }]]));
   const batch = buildLuxAlgoEvidenceBatch(syncSummary, datasetRows);
   assert.equal(batch.records.length, 18);

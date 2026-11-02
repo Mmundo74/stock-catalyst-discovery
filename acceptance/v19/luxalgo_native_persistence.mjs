@@ -1,4 +1,18 @@
+import { createHash } from 'node:crypto';
 import { LUXALGO_COMMIT } from './luxalgo_catalog.mjs';
+
+function valuesClause(rows, width, jsonColumns = []) {
+  return rows.map((_, rowIndex) => `(${Array.from({ length: width }, (_, columnIndex) => {
+    const placeholder = `$${rowIndex * width + columnIndex + 1}`;
+    return jsonColumns.includes(columnIndex) ? `${placeholder}::jsonb` : placeholder;
+  }).join(',')})`).join(',');
+}
+
+function chunks(values, size = 200) {
+  const out = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
 
 export async function persistLuxAlgoEvidenceBatch(client, batch, runId, { runAlreadyStarted = false } = {}) {
   if (!runAlreadyStarted) {
@@ -8,22 +22,61 @@ export async function persistLuxAlgoEvidenceBatch(client, batch, runId, { runAlr
   try {
     await client.query('BEGIN');
     const persisted = { events: 0, revisions: 0 };
-    for (const record of batch.records) {
-      const payload = JSON.stringify(record.sourcePayload);
-      await client.query(`INSERT INTO catalyst_acceptance.events
+    const records = batch.records.map((record) => {
+      if (typeof record.eventTime !== 'string' || !Number.isFinite(Date.parse(record.eventTime))) {
+        throw new Error('luxalgo_event_time_required_for_shared_event');
+      }
+      return { ...record, payload: JSON.stringify(record.sourcePayload) };
+    });
+    for (const group of chunks(records)) {
+      const values = group.map((record) => [record.engine,record.source,record.sourceEventId,record.originalName,
+        record.eventTime,record.observedAt,record.sourceUrl,record.fingerprint,record.payload]).flat();
+      const events = await client.query(`INSERT INTO catalyst_acceptance.events
         (engine,source,source_event_id,original_name,event_time,observed_at,source_url,fingerprint,source_payload)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+        VALUES ${valuesClause(group,9,[8])}
         ON CONFLICT(engine,source,source_event_id) DO UPDATE SET original_name=excluded.original_name,
           event_time=excluded.event_time,observed_at=excluded.observed_at,source_url=excluded.source_url,
-          fingerprint=excluded.fingerprint,source_payload=excluded.source_payload`,
-      [record.engine,record.source,record.sourceEventId,record.originalName,record.eventTime,record.observedAt,
-        record.sourceUrl,record.fingerprint,payload]);
-      persisted.events += 1;
+          fingerprint=excluded.fingerprint,source_payload=excluded.source_payload RETURNING 1`, values);
+      persisted.events += events.rowCount ?? group.length;
+      const revisionValues = group.map((record) => [record.engine,record.source,record.sourceEventId,
+        record.fingerprint,record.originalName,record.payload,record.observedAt]).flat();
       const revision = await client.query(`INSERT INTO catalyst_acceptance.event_revisions
         (engine,source,source_event_id,fingerprint,original_name,original_payload,captured_at)
-        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7) ON CONFLICT DO NOTHING RETURNING 1`,
-      [record.engine,record.source,record.sourceEventId,record.fingerprint,record.originalName,payload,record.observedAt]);
+        VALUES ${valuesClause(group,7,[5])} ON CONFLICT DO NOTHING RETURNING 1`, revisionValues);
       persisted.revisions += revision.rowCount ?? 0;
+    }
+    const retryGroups = new Map();
+    for (const record of records) {
+      const key = `${record.engine}\u0000${record.source}`;
+      const group = retryGroups.get(key) ?? { engine: record.engine, source: record.source, ids: [] };
+      group.ids.push(record.sourceEventId);
+      retryGroups.set(key, group);
+    }
+    for (const group of retryGroups.values()) {
+      for (const ids of chunks([...new Set(group.ids)],500)) {
+        await client.query(`UPDATE catalyst_acceptance.evidence_quarantine SET retry_status='reprocessed',last_seen_at=now(),last_attempt_run=$4
+          WHERE engine=$1 AND source=$2 AND source_event_id=ANY($3::text[]) AND failure_reason='event_time_missing'`,
+        [group.engine,group.source,ids,runId]);
+      }
+    }
+    const quarantineRecords = (batch.quarantinedRecords ?? []).map((record) => {
+      const payload = JSON.stringify(record.sourcePayload);
+      const quarantineKey = createHash('sha256').update(JSON.stringify([
+        record.engine,record.source,record.sourceEventId,record.fingerprint,record.failureReason,
+      ])).digest('hex');
+      return [quarantineKey,record.engine,record.source,record.sourceEventId,record.fingerprint,
+        record.originalName,record.sourceUrl,record.observedAt,payload,record.failureReason,record.retryStatus,runId];
+    });
+    for (const group of chunks(quarantineRecords)) {
+      const values = group.flat();
+      await client.query(`INSERT INTO catalyst_acceptance.evidence_quarantine
+        (quarantine_key,engine,source,source_event_id,fingerprint,original_name,source_url,observed_at,original_payload,
+         failure_reason,retry_status,attempt_count,last_attempt_run)
+        VALUES ${valuesClause(group,12,[8])}
+        ON CONFLICT(quarantine_key) DO UPDATE SET
+          retry_status='pending_reprocess',attempt_count=catalyst_acceptance.evidence_quarantine.attempt_count+1,
+          last_seen_at=now(),last_attempt_run=excluded.last_attempt_run`,
+      values);
     }
     for (const result of batch.sourceResults) {
       const sourceKey = `luxalgo:${result.source}`;
@@ -47,6 +100,7 @@ export async function persistLuxAlgoEvidenceBatch(client, batch, runId, { runAlr
       coverage: batch.coverage, dataset_counts: batch.datasetCounts ?? {},
       source_results: batch.sourceResults,
       imported_records: batch.records.length, upserted_events: persisted.events, new_revisions: persisted.revisions,
+      quarantined_records: batch.quarantinedRecords?.length ?? 0,
       alert_eligible: false, notification_outbox_created: 0, export_mode: 'full_snapshot_replay_idempotent' };
     await client.query("UPDATE catalyst_acceptance.pipeline_runs SET status='committed',completed_at=now(),evidence=$2::jsonb WHERE run_id=$1",
       [runId,evidence]);
