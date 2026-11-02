@@ -105,7 +105,7 @@ test('native evidence bridge inventories every dataset and imports full snapshot
   assert.deepEqual(batch.coverage.missingDatasets, []);
   assert.equal(batch.coverage.sourceComplete, false);
   assert.equal(batch.coverage.coverageComplete, false);
-  assert.equal(batch.coverage.failedSources.length, 0);
+  assert.equal(batch.coverage.failedSources.length, 1);
 });
 
 test('native bridge records source errors and refuses false completeness on partial exports', () => {

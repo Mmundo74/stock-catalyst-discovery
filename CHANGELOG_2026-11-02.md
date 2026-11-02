@@ -3,6 +3,10 @@ Total output lines: 154
 
 # Change Log — 2026-11-02
 
+## Final consistency fix for date-aware fixture
+
+- Corrected the same all-dataset fixture's remaining legacy assertion from zero failed source-health checks to **one** (LDA has source records without a trustworthy event date). The 18 export families remain present. Unrelated collector implementations and runtime logic were not changed.
+
 ## Updated legacy fixture for strict date integrity (development)
 
 - Initial isolated execution of the published catalog and native-summary suites revealed a real stale test expectation: the existing all-dataset fixture still expected 18 dated events from 18 exports, despite the required year-only lobbying quarantine. Corrected it to give FEC a real `coverageEndDate` and require **17 dated records plus one quarantined, undated LDA record**, with LDA source health marked incomplete.

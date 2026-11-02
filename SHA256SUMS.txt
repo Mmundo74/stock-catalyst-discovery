@@ -1,6 +1,6 @@
 ee9396ae6d0db88f8bf36316a1b9997444d4713db0265cb038e00340476e2e8c  ./.github/workflows/luxalgo-postgres-one-shot.yml
 99ebb60effaaee6822d27c98acc7fd0c77446ffe3122e651b7695ba3340b0f5f  ./CHANGELOG_2026-11-01.md
-a74948ea04067c83afbd06117f70553b8f1c0ae93b74720ff04e52d413a014f3  ./CHANGELOG_2026-11-02.md
+b4edc0a2e2e627d7a763c15309b00406686a37a2097ab29a5b76d0e9ef5847ba  ./CHANGELOG_2026-11-02.md
 a496c51910833b1bc96b7e9b9e216b59906153c1e052bacefc8fc18553dcf436  ./README.md
 6c46a79c3fafb56a91cc9c593dd6e2296bffcb0426febc27d74409128cfd3e75  ./RECOVERY_MANIFEST.md
 16580cacfc4923b914086cefdb5df526d84f8419e37ccff325dd3571a76147db  ./acceptance/v10/federalreserve_source.mjs
@@ -36,7 +36,7 @@ d5442d26ff5a316923a0e74cc55c1042721ecec9ca4d3276ad1ffb2ad3ebc007  ./acceptance/v
 20e63e08753b7db5cb1bf26c95d33906f7e9daa510390e9e6da9a56d155278c9  ./acceptance/v18/news_central_once.mjs
 07e577ce7b63c0efa603907fad7c19b1c10dc4561727de41f6811532a39c38de  ./acceptance/v19/README.md
 aead606efd90af696536e75abd38e2152a69dc17e4d105267569e43dade4f162  ./acceptance/v19/luxalgo_catalog.mjs
-efbe9d2f932d3fb8da8d5947605d924a65ffc4e757e5d7bea8d175bce1cd86e5  ./acceptance/v19/luxalgo_catalog.test.mjs
+65293913f92773527ffc393e42d2ba14312962faae8c0aa5b6be1f0d785fae31  ./acceptance/v19/luxalgo_catalog.test.mjs
 91745f49ec9fdcca7f78bda769aedcdc4405f5ff9a6895b593cb7da03eb84d2a  ./acceptance/v19/luxalgo_finra_market_identity.patch
 5c185db98bd1dff2992864325c19191acbe8d3059c1209f827e17a5560bd2e7f  ./acceptance/v19/luxalgo_native_bridge.mjs
 bc690d6ecec85652a1c932a7a949bce8952fff01240823c6c2003e8d57b646f6  ./acceptance/v19/luxalgo_native_bridge.test.mjs
