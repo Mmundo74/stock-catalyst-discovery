@@ -128,7 +128,7 @@ jobs:
           corepack prepare pnpm@10.33.0 --activate
           pnpm install --frozen-lockfile
           pnpm --filter @luxalgo/market-trackers-cli build
-      - name: Run every implemented LuxAlgo source and persist its evidence
+      - name: Run implemented non-SEC LuxAlgo sources and persist their evidence
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           MARKET_TRACKERS_CONTACT: ${{ vars.MARKET_TRACKERS_CONTACT }}
@@ -138,7 +138,11 @@ jobs:
           set -euo pipefail
           export MARKET_TRACKERS_DB="$(node --input-type=module -e 'const u=new URL(process.env.SUPABASE_SESSION_POOLER_URL);u.searchParams.set("options","-c search_path=luxalgo_native,catalyst_acceptance,public");process.stdout.write(u.toString())')"
           export MARKET_TRACKERS_LOG=silent
-          node vendor/luxalgo/packages/cli/dist/index.js sync --limit 25 --allow-partial --json \
+          # SEC EDGAR daily and bulk sources are deliberately excluded until authorized.
+          # The bridge still expects the full pinned catalog, so coverage reports them missing.
+          node vendor/luxalgo/packages/cli/dist/index.js sync \
+            --source senate-efd,house-clerk,usaspending,lda,finra,congress-legislators,patentsview,clinicaltrials,openfda,cftc,wikimedia,govinfo,fec,govinfo-hearings,federalreserve \
+            --limit 25 --allow-partial --json \
             > "$RUNNER_TEMP/luxalgo-sync-summary.json" 2> "$RUNNER_TEMP/luxalgo-sync-stderr.log" || true
           test -s "$RUNNER_TEMP/luxalgo-sync-summary.json"
           node vendor/luxalgo/packages/cli/dist/index.js export --out "$RUNNER_TEMP/luxalgo-dumps" --snapshots-only --json \

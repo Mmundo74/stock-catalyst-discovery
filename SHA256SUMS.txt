@@ -1,6 +1,6 @@
-97a51461c7139f3f4cc3a279b13fb6146df830f6a178e782103e7c7c9a7f00ce  ./.github/workflows/luxalgo-postgres-one-shot.yml
+b953ea04a3e9d00c498443d49040568c6d8be45c1ce12ba3ce308843ebc79032  ./.github/workflows/luxalgo-postgres-one-shot.yml
 99ebb60effaaee6822d27c98acc7fd0c77446ffe3122e651b7695ba3340b0f5f  ./CHANGELOG_2026-11-01.md
-d5538977eaf6d8576a5f0ef7c0f03a9ab9fd5b6658361f1e1911a3d2777fb10e  ./CHANGELOG_2026-11-02.md
+d26acbbcb520062caf34f9933a877e6dc8ab48b038fbc3e48bfb47c0cfb4e010  ./CHANGELOG_2026-11-02.md
 a496c51910833b1bc96b7e9b9e216b59906153c1e052bacefc8fc18553dcf436  ./README.md
 6c46a79c3fafb56a91cc9c593dd6e2296bffcb0426febc27d74409128cfd3e75  ./RECOVERY_MANIFEST.md
 16580cacfc4923b914086cefdb5df526d84f8419e37ccff325dd3571a76147db  ./acceptance/v10/federalreserve_source.mjs
