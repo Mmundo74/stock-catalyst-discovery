@@ -1,0 +1,36 @@
+name: Stock catalyst direct email transport test
+# One-shot only; does not enable recurring collection or send stock alerts.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smtp-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify email transport credentials
+        env:
+          SMTP_HOST: ${{ secrets.ALERT_SMTP_HOST }}
+          SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+        run: |
+          for name in SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM; do
+            if [ -z "${!name}" ]; then echo "Missing secret: $name" >&2; exit 1; fi
+          done
+      - run: npm install --no-save --ignore-scripts --no-audit --no-fund pg@8.16.0 nodemailer@6.10.1
+      - name: Send bounded SMTP transport test
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          ALERT_SMTP_HOST: ${{ secrets.ALERT_SMTP_HOST }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: warriorniner74@gmail.com
+          ALERT_TEST_ONLY: 'true'
+        run: node delivery/email/eligible_email.mjs
