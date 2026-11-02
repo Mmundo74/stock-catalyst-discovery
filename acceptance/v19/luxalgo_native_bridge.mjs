@@ -25,13 +25,30 @@ function safeFailureCode(error) {
 export function buildLuxAlgoEvidenceBatch(syncSummary, datasetRows) {
   if (!syncSummary || !Array.isArray(syncSummary.results)) throw new TypeError('invalid_luxalgo_sync_summary');
   if (!datasetRows || typeof datasetRows !== 'object' || Array.isArray(datasetRows)) throw new TypeError('luxalgo_dataset_rows_required');
-  const results = syncSummary.results.map((result) => ({
-    source: result.source, implemented: result.implemented === true,
-    ok: !result.error && result.implemented === true,
-    error: result.error ? safeFailureCode(result.error) : null,
-    // LuxAlgo sync success does not declare full historical/provider coverage.
-    coverageComplete: false,
-  }));
+  const results = syncSummary.results.map((result) => {
+    const hasAttempted = Object.hasOwn(result, 'parseAttempted');
+    const hasSucceeded = Object.hasOwn(result, 'parseSucceeded');
+    const parseCoverageKnown = hasAttempted && hasSucceeded &&
+      Number.isInteger(result.parseAttempted) && result.parseAttempted >= 0 &&
+      Number.isInteger(result.parseSucceeded) && result.parseSucceeded >= 0 &&
+      result.parseSucceeded <= result.parseAttempted;
+    const parseFailures = parseCoverageKnown ? result.parseAttempted - result.parseSucceeded : null;
+    const error = result.error ? safeFailureCode(result.error)
+      : (hasAttempted || hasSucceeded) && !parseCoverageKnown ? 'invalid_parse_coverage_metadata'
+        : parseFailures > 0 ? 'source_parse_incomplete' : null;
+    return {
+      source: result.source, implemented: result.implemented === true,
+      ok: !error && result.implemented === true,
+      error,
+      parseCoverageKnown,
+      parseAttempted: parseCoverageKnown ? result.parseAttempted : null,
+      parseSucceeded: parseCoverageKnown ? result.parseSucceeded : null,
+      parseFailures,
+      rowsUpserted: Number.isInteger(result.rowsUpserted) && result.rowsUpserted >= 0 ? result.rowsUpserted : null,
+      // LuxAlgo sync success does not declare full historical/provider coverage.
+      coverageComplete: false,
+    };
+  });
   const coverage = assessLuxAlgoCoverage(results);
   const unknownDatasets = Object.keys(datasetRows).filter((id) => !Object.hasOwn(LUXALGO_DATASETS, id));
   if (unknownDatasets.length) throw new TypeError('unknown_luxalgo_export_dataset');

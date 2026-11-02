@@ -58,6 +58,8 @@ try {
     source_complete: false, coverage_complete: false, imported_records: batch.records.length,
     observed_sources: batch.coverage.observedSources, expected_sources: batch.coverage.expectedSources,
     successful_sources: batch.coverage.successfulSourceCount,
+    parse_failures: batch.coverage.parseFailureCount,
+    parse_coverage_unknown_sources: batch.coverage.parseCoverageUnknownSources,
     observed_datasets: batch.coverage.datasetsObserved, expected_datasets: batch.coverage.expectedDatasets,
     missing_sources: batch.coverage.missingSources, failed_sources: batch.coverage.failedSources,
     datasets_without_rows: batch.coverage.datasetsWithoutRows, missing_datasets: batch.coverage.missingDatasets }));

@@ -37,6 +37,14 @@ the evidence. It creates no notification outbox rows. The manual hosted executio
 yet verified, so this integration must not be described as operational until that run
 passes against the exact published commit.
 
+Source results also carry the upstream parser counters. A source with
+`parseAttempted != parseSucceeded` is recorded as failed with
+`source_parse_incomplete`; malformed or one-sided counter metadata fails as
+`invalid_parse_coverage_metadata`. Older result formats that omit both counters are
+marked parse-coverage-unknown, not treated as proof of completeness. Successfully parsed
+rows from a partial source remain eligible for durable evidence import, with that
+source's health marked partial/error.
+
 LuxAlgo rows preserve normalized source evidence and attribution but do not necessarily
 contain the upstream HTTP response body. Its native store remains the durable source
 checkpoint. Shared import always replays full bounded snapshots, which makes a retry

@@ -4,8 +4,8 @@ import { LUXALGO_SOURCES } from './luxalgo_catalog.mjs';
 import { buildLuxAlgoEvidenceBatch } from './luxalgo_native_bridge.mjs';
 import { persistLuxAlgoEvidenceBatch } from './luxalgo_native_persistence.mjs';
 
-function makeBatch() {
-  return buildLuxAlgoEvidenceBatch({ ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true })) }, {
+function makeBatch(summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true })) }) {
+  return buildLuxAlgoEvidenceBatch(summary, {
     'insider-transactions': [{ id: 'accession:nd:1', ticker: 'ABC', filedAt: '2026-11-01',
       provenance: { source: 'edgar', sourceUrl: 'https://www.sec.gov/Archives/filing',
         retrievedAt: '2026-11-02T00:00:00Z', parser: 'ownership@1' } }],
@@ -49,6 +49,22 @@ test('replay safely upserts events and does not duplicate an existing revision',
   assert.equal(result.persisted.revisions,0,'ON CONFLICT DO NOTHING suppresses a duplicate revision');
   assert.ok(client.calls.some((c)=>c.sql.includes('ON CONFLICT(engine,source,source_event_id) DO UPDATE')));
   assert.ok(client.calls.some((c)=>c.sql==='COMMIT'));
+});
+
+test('partial parser failure imports good records but records source health as error', async () => {
+  const summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true,
+    parseAttempted: source === 'fec' ? 2 : 0, parseSucceeded: source === 'fec' ? 1 : 0 })) };
+  const batch = makeBatch(summary);
+  const client = new MockClient();
+  const result = await persistLuxAlgoEvidenceBatch(client, batch, 'lux_test_partial_parse');
+  assert.equal(result.persisted.events, 1, 'valid records remain durable');
+  assert.equal(result.evidence.coverage.parseFailureCount, 1);
+  const fecHealth = client.calls.find((call) => call.sql.includes('INSERT INTO catalyst_acceptance.source_health') &&
+    call.params[0] === 'luxalgo:fec');
+  assert.ok(fecHealth);
+  assert.equal(fecHealth.params[1], 'error');
+  assert.equal(fecHealth.params[2], 'source_parse_incomplete');
+  assert.ok(client.calls.some((call) => call.sql === 'COMMIT'));
 });
 
 test('failed persistence rolls back and does not advance the shared import checkpoint', async () => {

@@ -1,5 +1,13 @@
 # Change Log — 2026-11-02
 
+## LuxAlgo bounded live smoke and parse-coverage correction
+
+- Ran the exact pinned LuxAlgo `market-trackers` source tree at `1ecfcca36a224d4758cc6e2e20cca216db43d5ee` against a temporary SQLite database, not Supabase. A single `--limit 1` smoke across 14 non-EDGAR sources completed in about two minutes and exported all 18 dataset snapshots. It persisted 12,302 short-volume rows, 3,895 committee-assignment rows, 990 clinical-trial rows, and smaller current records from USAspending, lobbying, openFDA, Wikimedia, GovInfo, FEC, hearings, and Federal Reserve. Senate/CFTC returned zero new records. SEC EDGAR and EDGAR bulk were excluded because their required SEC contact identity is not configured in this workspace; PatentsView was excluded to avoid a first-run bulk download without confirming its key/quota impact.
+- The live run surfaced a concrete coverage defect: FEC reported `parseAttempted=2`, `parseSucceeded=1` while the source run remained nominally successful. One malformed candidate row (`missing CAND_ID`) was skipped by upstream. The shared LuxAlgo bridge previously counted this source as successful because it looked only at the source error field.
+- Changed the bridge to mark parse-count mismatches as `source_parse_incomplete`, invalid or one-sided counters as `invalid_parse_coverage_metadata`, and report aggregate parse failures plus unknown-counter sources in both durable run evidence and the acceptance output. Normalized valid rows remain importable, but the source cannot be reported healthy/complete after a row parse failure. Historical source results without counters remain explicitly coverage-unverified rather than being mislabeled as parse failures.
+- Added regression cases for partial parse success, invalid counters, absent counters, and persistence of valid rows alongside a source-health error. Focused LuxAlgo catalog/persistence suite: **16 passed, 0 failed**. Full offline regression: **287 passed, 0 failed**. Live data in this smoke stayed in `/tmp/scd-luxalgo-check.db`; Supabase data, checkpoints, production schedules, and alert delivery were untouched.
+- This is a local live-source and export smoke, not hosted Supabase persistence or an unattended run. No project GitHub source was published by this change.
+
 ## Acceptance database role and RLS hardening
 
 - Verified current main at d621bfc and inspected live Supabase catalogs. The dedicated scd_luxalgo_acceptance login had CREATEDB, CREATEROLE, REPLICATION, and BYPASSRLS enabled. This contradicts earlier log entries claiming these attributes were off; this entry supersedes them. SUPERUSER was already off.

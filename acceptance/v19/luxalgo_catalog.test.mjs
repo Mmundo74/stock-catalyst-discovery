@@ -108,6 +108,51 @@ test('native bridge records source errors and refuses false completeness on part
   assert.equal(batch.coverage.sourceComplete, false);
 });
 
+test('native bridge marks source partial when upstream skips malformed rows', () => {
+  const summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({
+    source, implemented: true, parseAttempted: source === 'fec' ? 2 : 0,
+    parseSucceeded: source === 'fec' ? 1 : 0, rowsUpserted: source === 'fec' ? 1 : 0,
+  })) };
+  const batch = buildLuxAlgoEvidenceBatch(summary, {});
+  const fec = batch.sourceResults.find((result) => result.source === 'fec');
+  assert.equal(fec.ok, false);
+  assert.equal(fec.error, 'source_parse_incomplete');
+  assert.equal(fec.parseCoverageKnown, true);
+  assert.equal(fec.parseFailures, 1);
+  assert.equal(batch.coverage.parseFailureCount, 1);
+  assert.deepEqual(batch.coverage.failedSources, ['fec']);
+  assert.deepEqual(batch.coverage.parseCoverageUnknownSources, []);
+  assert.equal(batch.coverage.sourceComplete, false);
+});
+
+test('native bridge rejects malformed or impossible parse coverage metadata', () => {
+  for (const values of [
+    { parseAttempted: -1, parseSucceeded: 0 },
+    { parseAttempted: 1, parseSucceeded: 2 },
+    { parseAttempted: 1 },
+  ]) {
+    const summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({
+      source, implemented: true, ...(source === 'fec' ? values : { parseAttempted: 0, parseSucceeded: 0 }),
+    })) };
+    const batch = buildLuxAlgoEvidenceBatch(summary, {});
+    const fec = batch.sourceResults.find((result) => result.source === 'fec');
+    assert.equal(fec.ok, false);
+    assert.equal(fec.error, 'invalid_parse_coverage_metadata');
+    assert.deepEqual(batch.coverage.failedSources, ['fec']);
+    assert.ok(batch.coverage.parseCoverageUnknownSources.includes('fec'));
+    assert.equal(batch.coverage.sourceComplete, false);
+  }
+});
+
+test('native bridge records when an older source result omits parse counters without claiming complete coverage', () => {
+  const summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true })) };
+  const batch = buildLuxAlgoEvidenceBatch(summary, {});
+  assert.deepEqual(batch.coverage.failedSources, []);
+  assert.deepEqual(batch.coverage.parseCoverageUnknownSources, LUXALGO_SOURCES);
+  assert.equal(batch.coverage.sourceComplete, false);
+  assert.equal(batch.coverage.coverageComplete, false);
+});
+
 test('LuxAlgo Postgres client is scoped to the isolated schema per connection', () => {
   const connection = luxAlgoDatabaseUrl('postgresql://user:pass@localhost:5432/postgres?sslmode=require');
   const url = new URL(connection);
