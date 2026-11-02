@@ -58,12 +58,23 @@ export function assessTickerbotContinuation({ checkpointCursor, requestCursor, r
   if (!oldCoverageShape || !newCoverageShape) reasons.push('coverage_metadata_unavailable');
   else if (JSON.stringify(oldCoverageShape) !== JSON.stringify(newCoverageShape)) reasons.push('coverage_snapshot_changed');
 
-  // The provider may revise historical rows after an `asof` was pinned. Since
-  // page boundaries can move when sort values change, do not checkpoint past a
-  // page when the response explicitly reports historical revisions.
+  // A revision dated after the pinned historical instant can change the values
+  // used for the sort and move page boundaries inside this scan epoch. Revisions
+  // at or before asof are already part of that historical view and do not, by
+  // themselves, make continuation unsafe.
   const revisedRows = data?._meta?.history_revised_at;
   if (revisedRows && typeof revisedRows === 'object' && Object.keys(revisedRows).length > 0) {
-    reasons.push('historical_rows_revised');
+    const asOfMs = Date.parse(requestAsOf);
+    if (!Number.isFinite(asOfMs)) {
+      reasons.push('historical_revision_anchor_invalid');
+    } else {
+      const revisionTimes = Object.values(revisedRows).map(value => Date.parse(value));
+      if (revisionTimes.some(value => !Number.isFinite(value))) {
+        reasons.push('historical_revision_timestamp_invalid');
+      } else if (revisionTimes.some(value => value > asOfMs)) {
+        reasons.push('historical_rows_revised_after_snapshot');
+      }
+    }
   }
 
   const next = data?.next_cursor;
