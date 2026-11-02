@@ -100,6 +100,10 @@ test('undated raw rows are durably quarantined while dated records and checkpoin
   assert.equal(result.evidence.quarantined_records, 1);
   const quarantine = client.calls.find((call) => call.sql.startsWith('INSERT INTO catalyst_acceptance.evidence_quarantine'));
   assert.ok(quarantine, 'quarantine write is part of the import transaction');
+  assert.match(quarantine.sql, /failure_reason,retry_status,last_attempt_run\)/,
+    'first quarantine insert uses the table default for attempt_count');
+  assert.doesNotMatch(quarantine.sql.match(/\(([^()]*)\) VALUES/)?.[1] ?? '', /attempt_count/,
+    'insert column count must match the 12 supplied values');
   assert.equal(JSON.parse(quarantine.params[8]).record.id, 'undated-speech');
   const sourceHealth = client.calls.find((call) => call.sql.includes('INSERT INTO catalyst_acceptance.source_health') &&
     call.params[0] === 'luxalgo:federalreserve');

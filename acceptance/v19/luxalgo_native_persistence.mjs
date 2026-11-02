@@ -81,7 +81,7 @@ export async function persistLuxAlgoEvidenceBatch(client, batch, runId, { runAlr
       const values = group.flat();
       await persistQuery(client, 'upsert_quarantine', `INSERT INTO catalyst_acceptance.evidence_quarantine
         (quarantine_key,engine,source,source_event_id,fingerprint,original_name,source_url,observed_at,original_payload,
-         failure_reason,retry_status,attempt_count,last_attempt_run)
+         failure_reason,retry_status,last_attempt_run)
         VALUES ${valuesClause(group,12,[8])}
         ON CONFLICT(quarantine_key) DO UPDATE SET
           retry_status='pending_reprocess',attempt_count=catalyst_acceptance.evidence_quarantine.attempt_count+1,
