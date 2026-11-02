@@ -19,7 +19,7 @@ The only workflow file is the repository's existing manually dispatched `.github
 
 ## Verification
 
-- Full offline Node test inventory: **265 passed, 0 failed** after reconstruction and local overlays.
+- Full offline Node test inventory at initial reconstructed commit: **265 passed, 0 failed**. Subsequent local timestamp-integrity and source-health corrections add two tests; the full suite must be rerun before the follow-up commit is considered verified.
 - This does not establish live-source coverage, hosted acceptance of the overlays, production operation, or notification delivery.
 - `acceptance/v8/stock-catalyst-additive-acceptance-2026-11-01-v8-123-tests.zip` is retained as a binary repository artifact and separately checked for ZIP integrity.
 - `SHA256SUMS.txt` records the reconstructed file contents for later transfer and verification.

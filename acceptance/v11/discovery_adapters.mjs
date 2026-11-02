@@ -10,8 +10,9 @@ export function normalizeExaResults(text, observedAt) {
     if (!title || !/^https?:\/\//i.test(url)) return null;
     const publishedLabel = field('Published') || 'N/A', parsed = Date.parse(publishedLabel);
     return { engine: 'news', source: 'exa_independent_news', sourceEventId: 'url:' + hash(url),
-      originalName: title, sourceUrl: url, eventTime: Number.isFinite(parsed) ? new Date(parsed).toISOString() : observedAt,
+      originalName: title, sourceUrl: url, eventTime: Number.isFinite(parsed) ? new Date(parsed).toISOString() : null,
       observedAt, fingerprint: hash(block), sourcePayload: { provider: 'Exa', published_label: publishedLabel,
+        source_timestamp_status: Number.isFinite(parsed) ? 'provided' : 'missing_or_unparseable',
         author_label: field('Author') || 'N/A', rendered_result: block } };
   }).filter(Boolean);
 }

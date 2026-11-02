@@ -6,6 +6,10 @@ const MAX_PAGE_SIZE = 50;
 const MAX_PAGES = 5;
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
+export function newsCentralHealthState(coverage) {
+  return coverage?.checkpointPermitted === true ? 'healthy' : 'error';
+}
+
 function validDate(value) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }

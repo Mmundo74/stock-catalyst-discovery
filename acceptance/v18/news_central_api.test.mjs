@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNewsCentralPageUrl, fetchNewsCentral, normalizeNewsCentralPage } from './news_central_api.mjs';
+import { buildNewsCentralPageUrl, fetchNewsCentral, normalizeNewsCentralPage, newsCentralHealthState } from './news_central_api.mjs';
 
 const observedAt = '2026-11-02T10:00:00.000Z';
 const item = (id, extra = {}) => ({ id, url: `https://newscentral.site/story/${id}`, title: `Headline ${id}`,
@@ -11,6 +11,12 @@ const response = (data, { total = data.length, pages = total ? 1 : 0, next = nul
   data, meta: { total, pages }, links: { next },
 });
 const mockResponse = body => ({ ok: true, status: 200, headers: { get: () => 'application/json; charset=utf-8' }, json: async () => body });
+
+test('source health marks continuity failures as errors while stable partial windows remain healthy', () => {
+  assert.equal(newsCentralHealthState({ checkpointPermitted: false, failureReason: 'page_identity_changed' }), 'error');
+  assert.equal(newsCentralHealthState({ checkpointPermitted: true, sourceComplete: false }), 'healthy');
+  assert.equal(newsCentralHealthState(null), 'error');
+});
 
 test('request builder fixes provider, language, sort, bounded page size and time window', () => {
   const url = buildNewsCentralPageUrl({ page: 2, limit: 25, since: '2026-11-01T00:00:00Z', until: observedAt, section: 'business' });

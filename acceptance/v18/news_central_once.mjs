@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
-import { fetchNewsCentral } from './news_central_api.mjs';
+import { fetchNewsCentral, newsCentralHealthState } from './news_central_api.mjs';
 
 const connectionString = process.env.SUPABASE_SESSION_POOLER_URL;
 if (!connectionString) throw new Error('missing_database_url');
@@ -68,8 +68,8 @@ try {
       VALUES($1,$2,$3) ON CONFLICT(source_key) DO UPDATE SET cursor_value=excluded.cursor_value,
       last_completed_run=excluded.last_completed_run,advanced_at=now()`, [sourceKey, JSON.stringify(cursor), runId]);
   }
-  await client.query('UPDATE catalyst_acceptance.source_health SET last_success_at=CASE WHEN $2 THEN now() ELSE last_success_at END,state=\'healthy\',last_error=$3 WHERE source_key=$1',
-    [sourceKey, coverage.checkpointPermitted, coverage.checkpointPermitted ? null : coverage.failureReason]);
+  await client.query('UPDATE catalyst_acceptance.source_health SET last_success_at=CASE WHEN $2 THEN now() ELSE last_success_at END,state=$4,last_error=$3 WHERE source_key=$1',
+    [sourceKey, coverage.checkpointPermitted, coverage.checkpointPermitted ? null : coverage.failureReason, newsCentralHealthState(coverage)]);
   await client.query('COMMIT'); tx = false;
   console.log(JSON.stringify({ pass: coverage.checkpointPermitted, run_id: runId, source,
     checks: { durable_events: true, append_only_revisions: true, checkpoint_only_after_stable_sweep: coverage.checkpointPermitted,

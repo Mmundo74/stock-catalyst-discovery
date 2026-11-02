@@ -8,10 +8,20 @@ test('Exa normalization is ticker independent and retains provider labels/raw ev
   const rows = normalizeExaResults(result, observed);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].engine, 'news');
-  assert.equal(rows[0].eventTime, observed);
+  assert.equal(rows[0].eventTime, null, 'retrieval time must not be substituted for source publication time');
   assert.equal(rows[0].sourcePayload.published_label, 'N/A');
+  assert.equal(rows[0].sourcePayload.source_timestamp_status, 'missing_or_unparseable');
   assert.match(rows[0].sourcePayload.rendered_result, /Research update/);
   assert.equal(normalizeExaResults(['Title: broken','URL: javascript:alert(1)','Published: today'].join('\n'), observed).length, 0);
+});
+
+test('Exa preserves a provider publication timestamp and distinguishes it from retrieval time', () => {
+  const observed = '2026-11-01T20:00:00.000Z';
+  const text = ['Title: Timestamped story','URL: https://example.org/timestamped','Published: 2026-11-01T19:30:00-05:00'].join('\n');
+  const [record] = normalizeExaResults(text, observed);
+  assert.equal(record.eventTime, '2026-11-02T00:30:00.000Z');
+  assert.equal(record.observedAt, observed);
+  assert.equal(record.sourcePayload.source_timestamp_status, 'provided');
 });
 
 test('Tickerbot normalization preserves optional coverage metadata and explicit cursor', () => {
