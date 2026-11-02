@@ -70,7 +70,7 @@ test('all 18 exported datasets normalize with their declared source provenance',
   }
   const [fec] = normalizeLuxAlgoRows('fec-candidates', [{ id: 'cand:2026', cycle: 2026, name: 'Candidate',
     provenance: { source: 'fec', sourceUrl: 'https://fec.gov/record', retrievedAt: '2026-11-02T01:00:00Z', parser: 'fec@1' } }]);
-  assert.equal(fec.eventTime, '2026-01-01T00:00:00.000Z');
+  assert.equal(fec.eventTime, null, 'election cycle alone is not an event date');
   const [fed] = normalizeLuxAlgoRows('fed-communications', [{ id:'speech/test20261102a', title:'Fed communication',
     provenance:{source:'federalreserve',sourceUrl:'https://www.federalreserve.gov/newsevents/speech/test20261102a.htm',
       retrievedAt:'2026-11-02T01:00:00Z',parser:'fed@1'} }]);
@@ -184,4 +184,31 @@ test('LuxAlgo Postgres client is scoped to the isolated schema per connection', 
   assert.equal(url.hostname, 'localhost');
   assert.equal(url.searchParams.get('sslmode'), 'require');
   assert.equal(url.searchParams.get('options'), '-c search_path=luxalgo_native,catalyst_acceptance,public');
+});
+
+test('reporting years never become fictitious January 1 catalysts', () => {
+  const provenance = { source:'lda', sourceUrl:'https://lda.gov/filings/public/filing/test/print/',
+    retrievedAt:'2026-11-02T07:00:00Z', parser:'lda-filings@1' };
+  const lda = { id:'test-filing', filingYear:2026, filingPeriod:'third_quarter', provenance };
+  const [normalized] = normalizeLuxAlgoRows('lobbying-filings', [lda]);
+  assert.equal(normalized.eventTime, null);
+  assert.equal(normalized.sourcePayload.record.filingYear, 2026);
+  assert.equal(normalized.sourcePayload.record.filingPeriod, 'third_quarter');
+  const batch = buildLuxAlgoEvidenceBatch({ ok:true, results:[{source:'lda', implemented:true, rowsUpserted:1}] },
+    { 'lobbying-filings':[lda] });
+  assert.equal(batch.records.length, 0);
+  assert.equal(batch.quarantinedRecords.length, 1);
+  assert.equal(batch.quarantinedRecords[0].failureReason, 'event_time_missing');
+  assert.deepEqual(batch.coverage.failedSources, ['lda']);
+  assert.equal(batch.sourceResults[0].error, 'source_event_time_missing');
+  assert.equal(batch.coverage.coverageComplete, false);
+});
+
+test('real FEC reporting end dates remain valid, but cycle-only and invalid dates do not', () => {
+  const provenance = { source:'fec', sourceUrl:'https://www.fec.gov/data/candidate/test/',
+    retrievedAt:'2026-11-02T07:00:00Z', parser:'fec-bulk@1' };
+  const candidate = { id:'test:2026', cycle:2026, coverageEndDate:'2026-10-14', provenance };
+  assert.equal(normalizeLuxAlgoRows('fec-candidates', [candidate])[0].eventTime, '2026-10-14T00:00:00.000Z');
+  assert.equal(normalizeLuxAlgoRows('fec-candidates', [{...candidate, coverageEndDate:undefined}])[0].eventTime, null);
+  assert.equal(normalizeLuxAlgoRows('fec-candidates', [{...candidate, coverageEndDate:'2026-02-30'}])[0].eventTime, null);
 });

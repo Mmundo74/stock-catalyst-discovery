@@ -35,10 +35,10 @@ export const LUXALGO_DATASETS = Object.freeze({
 const DATE_FIELDS = Object.freeze({
   'congress-trades': ['transactedAt'], 'insider-transactions': ['transactedAt', 'filedAt'],
   'thirteenf-holdings': ['periodEnd'], 'gov-contracts': ['actionDate'], 'gov-grants': ['actionDate'],
-  'lobbying-filings': ['filingYear'], 'short-volume': ['date'], 'committee-assignments': ['effectiveDate'],
+  'lobbying-filings': [], 'short-volume': ['date'], 'committee-assignments': ['effectiveDate'],
   patents: ['grantDate'], 'clinical-trials': ['lastUpdated'], 'fda-approvals': ['statusDate'],
   'cot-reports': ['reportDate'], 'wiki-pageviews': ['day'], bills: ['latestActionDate', 'introducedDate'],
-  'fec-candidates': ['coverageEndDate', 'cycle'], 'fec-contributions': ['date', 'cycle'],
+  'fec-candidates': ['coverageEndDate'], 'fec-contributions': ['date'],
   'congress-hearings': ['heldDate'], 'fed-communications': ['date'],
 });
 
@@ -52,12 +52,17 @@ const eventTitle = (row) => {
 const eventTime = (dataset, row) => {
   for (const field of DATE_FIELDS[dataset]) {
     const raw = row[field];
-    const year = (field === 'filingYear' || field === 'cycle') && Number.isInteger(raw) ? String(raw) : raw;
-    if (typeof year !== 'string' || !year.trim()) continue;
-    const normalized = /^\d{4}$/.test(year) ? `${year}-01-01T00:00:00.000Z` :
-      /^\d{4}-\d{2}-\d{2}$/.test(year) ? `${year}T00:00:00.000Z` : year;
-    const date = new Date(normalized);
-    if (Number.isFinite(date.getTime())) return date.toISOString();
+    if (typeof raw !== 'string') continue;
+    const value = raw.trim();
+    // A reporting year or election cycle is not a dated catalyst. Never invent Jan 1.
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const datedInstant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+    if (!dateOnly && !datedInstant) continue;
+    const date = new Date(dateOnly ? `${value}T00:00:00.000Z` : value);
+    if (!Number.isFinite(date.getTime())) continue;
+    // JS Date silently rolls invalid calendar dates (e.g. February 30) forward.
+    if (dateOnly && date.toISOString().slice(0, 10) !== value) continue;
+    return date.toISOString();
   }
   return null;
 };

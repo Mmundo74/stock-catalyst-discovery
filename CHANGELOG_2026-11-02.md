@@ -3,6 +3,14 @@ Total output lines: 154
 
 # Change Log — 2026-11-02
 
+## Date-integrity regression: no year-only event timestamps (development branch)
+
+- Supabase read-only audit found **33** existing `luxalgo:lda:lobbying-filings` event rows with `event_time=2026-01-01`. The original filings contained `filingYear: 2026` and reporting quarters, **not** an exact filing day. Existing records were retained pending a separately controlled reconciliation; no production notifications were sent.
+- Corrected only the bridge's dated-event normalization: remove `filingYear` and election `cycle` as date substitutes, require a real day-level or timestamp field, and reject invalid calendar dates instead of allowing JavaScript date rollover. FEC records with actual `coverageEndDate` or transaction `date` remain eligible for dated evidence; year-only lobbying rows use the already-established durable quarantine mechanism, preserving original payload, URLs, IDs, and reporting periods.
+- Added focused regressions for year-only lobbying quarantine and FEC exact-date/cycle behavior. The source-health bridge will flag missing event times, while the underlying native collector continues to run. This patch does **not** repair the 33 legacy event timestamps in place, and the affected historical evidence must not be promoted to alerts before reconciliation.
+- Senate eFD failure stage established directly from the three latest durable native `sync_runs`: **GET https://efdsearch.senate.gov/search/home/ => HTTP 403** on all three runs; the CSRF/agreement POST and search grid were not reached. No further Senate live request was made for this investigation. Senate remains unhealthy, no substitute source or bypass claimed.
+- Scope: development-only code and tests; pinned upstream LuxAlgo, workflow/manual-only scheduling, SEC deferral, Supabase schema, Make/Brevo/Gmail alert task, and all three discovery engines preserved. No material architectural replacement, recurring job, real notification or trading. Verification at commit authoring: exact-match source transformation and checksum generation; full Node regression and hosted acceptance remain to be executed and must not be claimed as passed.
+
 ## Hosted LuxAlgo FINRA recovery — run #41
 
 - Published the FINRA reporting-facility identity overlay on development commit `5b735684e0bff0492eb94fdf642c3835f8a7dd4a` and dispatched the existing manual-only workflow once (run `41403935742` / #41). The exact published commit was checked out. GDELT and independent-news live probes remained off; SEC collectors remained excluded.
