@@ -46,6 +46,8 @@ rows from a partial source remain eligible for durable evidence import, with tha
 source's health marked error. The bridge also recognizes the pinned House Clerk
 collector's explicit `malformed index rows skipped` note, which its aggregate parser
 counters do not include, and records that count separately as a parse-failure hint.
+Sanitized per-source results are retained in the shared pipeline-run evidence, including
+parse counts, row counts, and safe failure codes.
 
 LuxAlgo rows preserve normalized source evidence and attribution but do not necessarily
 contain the upstream HTTP response body. Its native store remains the durable source

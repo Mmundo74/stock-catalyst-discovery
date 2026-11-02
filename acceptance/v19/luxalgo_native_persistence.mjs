@@ -45,6 +45,7 @@ export async function persistLuxAlgoEvidenceBatch(client, batch, runId, { runAlr
         cursor_value=excluded.cursor_value,last_completed_run=excluded.last_completed_run,advanced_at=now()`, [cursor,runId]);
     const evidence = { source: 'luxalgo_market_trackers', luxalgo_commit: LUXALGO_COMMIT,
       coverage: batch.coverage, dataset_counts: batch.datasetCounts ?? {},
+      source_results: batch.sourceResults,
       imported_records: batch.records.length, upserted_events: persisted.events, new_revisions: persisted.revisions,
       alert_eligible: false, notification_outbox_created: 0, export_mode: 'full_snapshot_replay_idempotent' };
     await client.query("UPDATE catalyst_acceptance.pipeline_runs SET status='committed',completed_at=now(),evidence=$2::jsonb WHERE run_id=$1",

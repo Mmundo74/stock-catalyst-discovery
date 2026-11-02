@@ -34,6 +34,8 @@ test('shared evidence is committed with revisions, source health, and import che
   assert.equal(result.persisted.events,1);
   assert.equal(result.persisted.revisions,1);
   assert.equal(client.inTransaction,false);
+  assert.equal(result.evidence.source_results.length,LUXALGO_SOURCES.length);
+  assert.ok(result.evidence.source_results.every((source)=>source.parseCoverageKnown===false));
   const checkpoint=client.calls.findIndex((c)=>c.sql.includes("VALUES('luxalgo:shared-evidence-import'"));
   const committed=client.calls.findIndex((c)=>c.sql==='COMMIT');
   assert.ok(checkpoint>0 && committed>checkpoint);
@@ -59,6 +61,7 @@ test('partial parser failure imports good records but records source health as e
   const result = await persistLuxAlgoEvidenceBatch(client, batch, 'lux_test_partial_parse');
   assert.equal(result.persisted.events, 1, 'valid records remain durable');
   assert.equal(result.evidence.coverage.parseFailureCount, 1);
+  assert.equal(result.evidence.source_results.find((source) => source.source === 'fec').parseFailures, 1);
   const fecHealth = client.calls.find((call) => call.sql.includes('INSERT INTO catalyst_acceptance.source_health') &&
     call.params[0] === 'luxalgo:fec');
   assert.ok(fecHealth);

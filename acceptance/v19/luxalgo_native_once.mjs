@@ -61,6 +61,7 @@ try {
     parse_failures: batch.coverage.parseFailureCount,
     parse_failure_hints: batch.coverage.parseFailureHintCount,
     parse_coverage_unknown_sources: batch.coverage.parseCoverageUnknownSources,
+    source_results: batch.sourceResults,
     observed_datasets: batch.coverage.datasetsObserved, expected_datasets: batch.coverage.expectedDatasets,
     missing_sources: batch.coverage.missingSources, failed_sources: batch.coverage.failedSources,
     datasets_without_rows: batch.coverage.datasetsWithoutRows, missing_datasets: batch.coverage.missingDatasets }));
