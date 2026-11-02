@@ -352,3 +352,9 @@
 - Supabase schema inspection surfaced `catalyst_acceptance.research_qualifications` with RLS disabled. No database policy/schema change was made. Review/harden this isolated test table before exposing it through the Data API; suggested SQL is `ALTER TABLE catalyst_acceptance.research_qualifications ENABLE ROW LEVEL SECURITY;` (policies and intended role access must be decided before application).
 - Offline regression from the repository checkout: **243 passed, 0 failed** across all `acceptance/**/*.test.mjs`; V17 targeted **10/10**. `npm test` was not applicable (repository has no `package.json`).
 - **Status:** Cursor expiry is handled and tested synthetically; no real expired cursor was observed. Provider snapshot drift still prevents safe Tickerbot page persistence; market coverage remains partial. Exa has no reliable continuation metadata; RSS remains a bounded rolling snapshot. Outbox worker protections are mock/acceptance tested, but receiver delivery acknowledgment and end-to-end phone delivery are not verified. The system is not operational; all production/recurring schedules remain inactive.
+
+
+## RLS grant follow-up — 2026-11-02
+
+- Read-only PostgreSQL ACL inspection confirms `anon`, `authenticated`, and `service_role` currently have no `USAGE` on `catalyst_acceptance` and no SELECT/INSERT/UPDATE/DELETE privileges on `research_qualifications`. The generic Supabase RLS-off advisor did not establish direct Data API reachability for those roles. The dedicated acceptance role retains the existing schema-specific write grants; they were not changed.
+- RLS remains disabled on the isolated qualification table. Enabling it is still recommended as defense in depth, with role-specific policies reviewed against the test harness first. No schema or grants were changed.
