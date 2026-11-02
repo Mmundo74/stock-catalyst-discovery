@@ -39,11 +39,24 @@ given an invented event date or admitted as catalyst events. Dated evidence, qua
 source health, and the import checkpoint commit atomically. No notification outbox rows
 are created.
 
-Hosted runs #36 and #37 reached the project database and collected native LuxAlgo data,
-but the shared-evidence import failed because `events.event_time` is required. Run #37
-identified PostgreSQL SQLSTATE 23502 during `persist_shared_evidence`. The quarantine
-path is implemented and the additive migration is applied, but its hosted retry is still
-required before the integrated bridge can be called working.
+Hosted runs #36–#39 exposed and corrected missing event-time quarantine and a column/value
+count error in the quarantine insert. Hosted run #40 (`41402652998`) passed against
+development commit `073c39582e7450c4b23507d2a3a89d6b97428e0f`: it committed 2,193
+shared-evidence records/revisions, retained 3,895 undated committee-assignment rows in
+quarantine, advanced the shared import checkpoint, and created no alerts. Its result
+remains partial: SEC collectors were excluded, four of the selected 15 sources reported
+errors or missing event timestamps, and only 11 selected sources were healthy.
+
+## FINRA reporting-facility identity
+
+The pinned FINRA parser used the filename market but discarded the row-level `Market`
+field. A single symbol can have separate reporting-facility observations, causing two
+valid rows to collide on the upstream natural key and fail PostgreSQL's multi-row upsert.
+The existing manual workflow applies the small reviewed patch in its ephemeral pinned
+checkout, leaves the LuxAlgo source commit unchanged, and runs that upstream parser's
+targeted Vitest suite before building. The patch retains both file and reporting-facility
+codes in the row identity; it does not aggregate or discard rows. Hosted ingestion of this
+correction is pending.
 
 The manual workflow has a `reuse_existing_native_sources` input for an import-only retry.
 It accepts only fresh results for all 15 selected sources within 60 minutes, then exports

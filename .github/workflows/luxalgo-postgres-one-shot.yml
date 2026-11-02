@@ -39,7 +39,7 @@ jobs:
           DB_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
         run: |
           if [ -z "$DB_URL" ]; then echo 'Missing secret SUPABASE_SESSION_POOLER_URL; do not paste it into logs.' >&2; exit 1; fi
-      - name: Retrieve exact pinned LuxAlgo source (no modifications)
+      - name: Retrieve exact pinned LuxAlgo source
         run: |
           mkdir -p vendor/luxalgo
           git -C vendor/luxalgo init -q
@@ -49,6 +49,8 @@ jobs:
           test "$(git -C vendor/luxalgo rev-parse HEAD)" = "1ecfcca36a224d4758cc6e2e20cca216db43d5ee"
           test -f vendor/luxalgo/packages/core/src/store/sql-driver.ts
           test -f vendor/luxalgo/packages/core/src/sources/federalreserve/source.ts
+      - name: Apply FINRA per-row market identity compatibility fix
+        run: git -C vendor/luxalgo apply "$GITHUB_WORKSPACE/acceptance/v19/luxalgo_finra_market_identity.patch"
       - name: Install only pinned Node postgres client
         run: npm install --no-save --ignore-scripts --no-audit --no-fund pg@8.16.0
       - name: Fetch official Supabase root CA for TLS verification
@@ -139,6 +141,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.33.0 --activate
           pnpm install --frozen-lockfile
+          pnpm exec vitest run packages/core/src/sources/finra-shortvol/parser.test.ts
           pnpm --filter @luxalgo/market-trackers-cli build
       - name: Run implemented non-SEC LuxAlgo sources
         if: ${{ !inputs.reuse_existing_native_sources }}

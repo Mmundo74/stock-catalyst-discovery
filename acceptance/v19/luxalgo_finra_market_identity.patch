@@ -1,0 +1,68 @@
+diff --git a/packages/core/src/sources/finra-shortvol/parser.ts b/packages/core/src/sources/finra-shortvol/parser.ts
+index 8d3a100..a7b8411 100644
+--- a/packages/core/src/sources/finra-shortvol/parser.ts
++++ b/packages/core/src/sources/finra-shortvol/parser.ts
+@@ -60,14 +60,20 @@ export function parseShortVolumeFile(input: ShortVolumeParseInput): ShortVolumeP
+     const shortVolume = volume(fields[2] ?? "");
+     const shortExemptVolume = volume(fields[3] ?? "");
+     const totalVolume = volume(fields[4] ?? "");
++    const rowMarket = fields.length > 5 ? fields[5]?.trim() : "";
+     if (
+       !date ||
+       !ticker ||
+       shortVolume === null ||
+       shortExemptVolume === null ||
+-      totalVolume === null
++      totalVolume === null ||
++      (fields.length > 5 && !rowMarket)
+     ) {
+       continue;
+     }
++    // The filename market (e.g. CNMS) contains multiple reporting facilities.
++    // Keep FINRA's row Market field in the natural key so same-symbol facility
++    // observations are preserved independently rather than colliding/updating.
++    const market = rowMarket ? `${input.market}:${rowMarket.toUpperCase()}` : input.market;
+ 
+     const shortRatio = totalVolume > 0 ? Math.round((shortVolume / totalVolume) * 1e6) / 1e6 : null;
+@@ -75,9 +81,9 @@ export function parseShortVolumeFile(input: ShortVolumeParseInput): ShortVolumeP
+     rows.push(
+       shortVolumeDaySchema.parse({
+-        id: shortVolumeDayId(date, ticker, input.market),
++        id: shortVolumeDayId(date, ticker, market),
+         date,
+         ticker,
+-        market: input.market,
++        market,
+         shortVolume,
+         shortExemptVolume,
+         totalVolume,
+diff --git a/packages/core/src/sources/finra-shortvol/parser.test.ts b/packages/core/src/sources/finra-shortvol/parser.test.ts
+index 21675c8..174a3f1 100644
+--- a/packages/core/src/sources/finra-shortvol/parser.test.ts
++++ b/packages/core/src/sources/finra-shortvol/parser.test.ts
+@@ -58,4 +58,25 @@ describe("parseShortVolumeFile (goldens)", () => {
+     });
+     expect(result.rows.find((r) => r.ticker === "ZVZZT")?.shortRatio).toBeNull();
+   });
++
++  it("keeps reporting-facility market identity for repeated symbol-day rows", () => {
++    const result = parseShortVolumeFile({
++      text: [
++        "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market",
++        "20260302|REPEAT|100|0|200|B",
++        "20260302|REPEAT|150|1|300|Q",
++        "20260302|SINGLE|40|0|80|B,Q,N",
++      ].join("\n"),
++      market: "CNMS",
++      sourceUrl: "https://cdn.finra.org/equity/regsho/daily/CNMSshvol20260302.txt",
++      retrievedAt: "2026-08-24T00:00:00.000Z",
++    });
++    expect(result.stats).toEqual({ attempted: 3, succeeded: 3 });
++    expect(result.rows.map((row) => row.id)).toEqual([
++      "2026-03-02:REPEAT:CNMS:B",
++      "2026-03-02:REPEAT:CNMS:Q",
++      "2026-03-02:SINGLE:CNMS:B,Q,N",
++    ]);
++    expect(result.rows.map((row) => row.market)).toEqual(["CNMS:B", "CNMS:Q", "CNMS:B,Q,N"]);
++  });
+ });
