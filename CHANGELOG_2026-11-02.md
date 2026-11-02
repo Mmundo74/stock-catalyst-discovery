@@ -1,5 +1,11 @@
 # Change Log — 2026-11-02
 
+## Hosted LuxAlgo run and bridge failure diagnostics
+
+- Published the recovered development history and the follow-up non-SEC source allowlist; exact branch tip `a06a3e147c14a241fca6d52b7cb650357cab13c9`. Manual workflow run **#36** used this commit and passed database authentication, isolated PostgreSQL persistence, research/outbox safeguards, all offline adapter suites, the bounded ScienceDaily and News Central ingestions, and the Federal Reserve LuxAlgo ingestion.
+- The native LuxAlgo store accepted records for 15 selected sources. Read-only Supabase inspection found 13 source runs with `ok=true`; Senate eFD returned HTTP 403; FINRA failed with “ON CONFLICT DO UPDATE command cannot affect row a second time”; FEC parsed 49/50 rows. These remain visible partial-coverage errors.
+- The shared-evidence bridge failed and its original catch path only recorded `catalog_export_or_import_failed`. Added phase-specific safe error codes and PostgreSQL SQLSTATE capture so the next retry can distinguish snapshot validation, evidence normalization, and database transaction failures without logging provider URLs, credentials, or raw database messages. The exact bridge defect remains unresolved pending that diagnostic retry.
+
 ## LuxAlgo bounded live smoke and parse-coverage correction
 
 - Ran the exact pinned LuxAlgo `market-trackers` source tree at `1ecfcca36a224d4758cc6e2e20cca216db43d5ee` against a temporary SQLite database, not Supabase. A single `--limit 1` smoke across 14 non-EDGAR sources completed in about two minutes and exported all 18 dataset snapshots. It persisted 12,302 short-volume rows, 3,895 committee-assignment rows, 990 clinical-trial rows, and smaller current records from USAspending, lobbying, openFDA, Wikimedia, GovInfo, FEC, hearings, and Federal Reserve. Senate/CFTC returned zero new records. SEC EDGAR and EDGAR bulk were excluded because their required SEC contact identity is not configured in this workspace; PatentsView was excluded to avoid a first-run bulk download without confirming its key/quota impact.

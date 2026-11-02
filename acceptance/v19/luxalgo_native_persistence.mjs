@@ -52,13 +52,16 @@ export async function persistLuxAlgoEvidenceBatch(client, batch, runId, { runAlr
       [runId,evidence]);
     await client.query('COMMIT');
     return { persisted, evidence };
-  } catch {
+  } catch (error) {
+    const pgCode = error?.severity && typeof error.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : null;
     await client.query('ROLLBACK').catch(() => {});
     await client.query("UPDATE catalyst_acceptance.pipeline_runs SET status='failed',completed_at=now(),evidence=$2::jsonb WHERE run_id=$1",
-      [runId,{ source:'luxalgo_market_trackers',luxalgo_commit:LUXALGO_COMMIT,failure_code:'durable_import_failed',source_complete:false }]).catch(()=>{});
+      [runId,{ source:'luxalgo_market_trackers',luxalgo_commit:LUXALGO_COMMIT,failure_code:'durable_import_failed',database_error_code:pgCode,source_complete:false }]).catch(()=>{});
     await client.query(`INSERT INTO catalyst_acceptance.source_health(source_key,last_attempt_at,state,last_error)
       VALUES('luxalgo:shared-evidence-import',now(),'error','durable_import_failed')
       ON CONFLICT(source_key) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,state='error',last_error=excluded.last_error`).catch(()=>{});
-    throw new Error('durable_import_failed');
+    const failure = new Error(pgCode ? `durable_import_failed_${pgCode}` : 'durable_import_failed');
+    if (pgCode) { failure.code = pgCode; failure.severity = error.severity; }
+    throw failure;
   }
 }

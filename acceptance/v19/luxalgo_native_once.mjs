@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import pg from 'pg';
 import { LUXALGO_COMMIT, LUXALGO_DATASETS } from './luxalgo_catalog.mjs';
-import { LUXALGO_EXPORT_DIRS, buildLuxAlgoEvidenceBatch, luxAlgoDatabaseUrl } from './luxalgo_native_bridge.mjs';
+import { LUXALGO_EXPORT_DIRS, buildLuxAlgoEvidenceBatch, luxAlgoDatabaseUrl, safeLuxAlgoBridgeFailure } from './luxalgo_native_bridge.mjs';
 import { persistLuxAlgoEvidenceBatch } from './luxalgo_native_persistence.mjs';
 
 const baseUrl = process.env.SUPABASE_SESSION_POOLER_URL;
@@ -15,6 +15,7 @@ const runId = `luxalgo_catalog_${randomUUID().replaceAll('-', '')}`;
 const MAX_TOTAL_INFLATED_BYTES = 96 * 1024 * 1024;
 const MAX_DATASET_ROWS = 50_000;
 let totalInflatedBytes = 0;
+let failurePhase = 'database_connect';
 
 async function exportedRows(dataset) {
   const dir = join(exportRoot, LUXALGO_EXPORT_DIRS[dataset]);
@@ -43,16 +44,22 @@ const client = new pg.Client({ connectionString: luxAlgoDatabaseUrl(baseUrl), co
 let connected = false;
 try {
   await client.connect(); connected = true;
+  failurePhase = 'record_run_start';
   await client.query("insert into catalyst_acceptance.pipeline_runs(run_id,engine,status,evidence) values($1,'government','started',$2)",
     [runId,{source:'luxalgo_market_trackers',luxalgo_commit:LUXALGO_COMMIT,catalog_sync:true}]);
+  failurePhase = 'read_native_snapshots';
   const syncSummary = JSON.parse(await readFile(summaryPath, 'utf8'));
   const datasetRows = {};
   for (const dataset of Object.keys(LUXALGO_DATASETS)) {
     const rows = await exportedRows(dataset);
     if (rows !== undefined) datasetRows[dataset] = rows;
   }
+  failurePhase = 'build_shared_evidence_batch';
   const batch = buildLuxAlgoEvidenceBatch(syncSummary, datasetRows);
   batch.datasetCounts = Object.fromEntries(Object.entries(datasetRows).map(([k,v])=>[k,v.length]));
+  console.log(JSON.stringify({ phase: 'shared_evidence_batch_built', record_count: batch.records.length,
+    dataset_count: Object.keys(datasetRows).length, expected_sources: batch.coverage.expectedSources }));
+  failurePhase = 'persist_shared_evidence';
   const { evidence } = await persistLuxAlgoEvidenceBatch(client,batch,runId,{runAlreadyStarted:true});
   console.log(JSON.stringify({ pass: true, run_id: runId, upstream_all_sources_succeeded: batch.coverage.allSourcesSucceeded,
     source_complete: false, coverage_complete: false, imported_records: batch.records.length,
@@ -66,14 +73,15 @@ try {
     missing_sources: batch.coverage.missingSources, failed_sources: batch.coverage.failedSources,
     datasets_without_rows: batch.coverage.datasetsWithoutRows, missing_datasets: batch.coverage.missingDatasets }));
   if (batch.coverage.successfulSourceCount === 0) process.exitCode=1;
-} catch {
+} catch (error) {
+  const failureCode = safeLuxAlgoBridgeFailure(error);
   if (connected) {
     await client.query("UPDATE catalyst_acceptance.pipeline_runs SET status='failed',completed_at=now(),evidence=$2::jsonb WHERE run_id=$1",
-      [runId,{source:'luxalgo_market_trackers',luxalgo_commit:LUXALGO_COMMIT,failure_code:'catalog_export_or_import_failed',source_complete:false}]).catch(()=>{});
+      [runId,{source:'luxalgo_market_trackers',luxalgo_commit:LUXALGO_COMMIT,failure_code:failureCode,failure_phase:failurePhase,source_complete:false}]).catch(()=>{});
     await client.query(`INSERT INTO catalyst_acceptance.source_health(source_key,last_attempt_at,state,last_error)
       VALUES('luxalgo:shared-evidence-import',now(),'error','catalog_export_or_import_failed')
       ON CONFLICT(source_key) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,state='error',last_error=excluded.last_error`).catch(()=>{});
   }
-  console.error(JSON.stringify({ pass:false, failure_code:'catalog_export_or_import_failed', run_id:runId }));
+  console.error(JSON.stringify({ pass:false, failure_code:failureCode, failure_phase:failurePhase, run_id:runId }));
   process.exitCode=1;
 } finally { if (connected) await client.end().catch(()=>{}); }

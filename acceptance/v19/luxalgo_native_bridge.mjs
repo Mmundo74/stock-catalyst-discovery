@@ -22,6 +22,26 @@ function safeFailureCode(error) {
   return 'upstream_source_error';
 }
 
+const SAFE_BRIDGE_FAILURES = new Set([
+  'invalid_luxalgo_sync_summary', 'luxalgo_dataset_rows_required', 'unknown_luxalgo_dataset',
+  'luxalgo_rows_must_be_array', 'invalid_luxalgo_row_or_provenance', 'duplicate_luxalgo_row_id',
+  'invalid_or_duplicate_luxalgo_source_result', 'durable_import_failed',
+]);
+
+/** Return a bounded diagnostic code without copying provider, database, or credential text into evidence. */
+export function safeLuxAlgoBridgeFailure(error) {
+  if (error instanceof SyntaxError) return 'snapshot_json_invalid';
+  if (error?.severity && typeof error.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code)) {
+    return `postgres_sqlstate_${error.code}`;
+  }
+  const message = typeof error?.message === 'string' ? error.message : '';
+  if (SAFE_BRIDGE_FAILURES.has(message) || /^luxalgo_[a-z0-9_]+$/.test(message)) return message;
+  if (/^durable_import_failed_[0-9A-Z]{5}$/.test(message)) return message;
+  if (error?.code === 'ENOENT') return 'snapshot_file_missing';
+  if (error?.code === 'EACCES') return 'snapshot_file_access_denied';
+  return 'catalog_step_failed';
+}
+
 function knownParseFailureHints(notes) {
   if (!Array.isArray(notes)) return 0;
   let count = 0;
