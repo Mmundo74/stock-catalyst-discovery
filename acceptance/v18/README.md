@@ -6,12 +6,12 @@ The request is restricted to `newscentral.site`, English business stories, ISO t
 
 Events and append-only revisions are persisted in the existing acceptance tables within one transaction. No discovery record creates an alert. The existing manual-only workflow runs adapter tests and one bounded live collection. It remains manually invoked; no schedule was added.
 
-This is supplementary independent reporting, not a replacement for Exa, ScienceDaily, or GDELT. Exa continuation remains unproven and no Exa API requests are made here. ScienceDaily remains a rolling snapshot, and GDELT remains subject to its existing HTTP 429 pause. The public feed/API timed out on first browser access; live endpoint reachability and response shape must pass hosted acceptance before this is considered hosted-tested.
+This is supplementary independent reporting, not a replacement for Exa, ScienceDaily, or GDELT. Exa continuation remains unproven and no Exa API requests are made here. ScienceDaily remains a rolling snapshot, and GDELT remains subject to its existing HTTP 429 pause. The public feed/API timed out during initial browser research; the hosted acceptance run later verified live access and the response shape.
 
 ## Verification status
 
-- Local adapter tests: 8/8 pass.
-- Live ingestion: pending manual workflow run.
+- Local adapter tests: 8/8 pass; full repository regression: 255/255 pass on merged `95ce4c4`.
+- Hosted live ingestion: manual workflow run #35 succeeded; 2 raw records and 2 append-only revisions were stored.
+- Coverage remains partial: no provider snapshot token, `sourceComplete=false`, `coverageComplete=false`, and `notificationEligible=false`. No alert was queued.
 - Unattended execution: not enabled.
 - Alert delivery: disabled for raw news records.
-- Coverage: deliberately partial.
