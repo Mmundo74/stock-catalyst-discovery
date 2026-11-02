@@ -30,7 +30,12 @@ export function assessTickerbotContinuation({ checkpointCursor, requestCursor, r
 
   if (providerError) {
     const code = providerError.code ?? providerError.status ?? 'unknown';
-    reasons.push(code === 400 || code === '400' || code === 'invalid_cursor' ? 'provider_rejected_cursor' : 'provider_request_failed');
+    const message = providerError.message ?? '';
+    if (code === 410 || code === '410' || code === 'cursor_expired' || /cursor.*expired|expired.*cursor/i.test(message)) {
+      reasons.push('provider_cursor_expired');
+    } else {
+      reasons.push(code === 400 || code === '400' || code === 'invalid_cursor' ? 'provider_rejected_cursor' : 'provider_request_failed');
+    }
   }
   if (typeof checkpointCursor !== 'string' || !checkpointCursor) reasons.push('checkpoint_cursor_missing');
   if (requestCursor !== checkpointCursor) reasons.push('request_cursor_mismatch');
