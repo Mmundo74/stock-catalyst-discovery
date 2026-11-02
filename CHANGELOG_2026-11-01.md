@@ -312,3 +312,15 @@
 - Commits: research gate 347b716; delivery guard 9b9efc1; delivery tests 14b3d81; manual GDELT guard 48773a8. Existing manual-only workflow remains the sole workflow; its bounded GDELT request defaults off after run #28 returned HTTP 429.
 - Existing manual workflow run #29 (41370392151) on 48773a8: PASS, standard GitHub-hosted Ubuntu runner. URL/TLS preflight passed; pinned LuxAlgo native driver tests passed (insert/upsert/rollback/commit/reconnect); PostgreSQL session acceptance passed (scoped role, independent concurrent deduplication, evidence/checkpoint/coverage durability, restart recovery, revision/outbox idempotency, rollback and interrupted-session rollback). Federal Reserve bounded ingestion passed. ScienceDaily 60-entry snapshot was persisted/replayed with incomplete coverage marked. Qualification and mock-only Make suites passed; GDELT live ingestion skipped. No production notification was delivered.
 - Preserved existing collectors, schemas/data, pending outbox, Make → Brevo → Gmail → ChatGPT route, pinned LuxAlgo source, and three discovery engines. No paid service, recurring run, production activation, schema change, or trading was introduced. Exa pagination and Tickerbot complete-market coverage remain unresolved; system is not operational.
+
+
+## Post-run source and outbox audit — 2026-11-02
+
+- **Hosted acceptance:** Existing manual workflow run #29 passed on commit `48773a8`; GDELT live probe was intentionally skipped. Native PostgreSQL persistence, rollback, restart recovery, concurrency/idempotency, coverage, LuxAlgo and adapter tests passed. V14 mock delivery tests passed 10/10; no external notification was sent.
+- **Federal Reserve:** The successful bounded run advanced the durable checkpoint from offset 135 to 144. Source health is healthy and the snapshot hash was recorded.
+- **ScienceDaily:** Bounded read fetched 60 records; newest item and snapshot hash were unchanged, so no new events were inserted. Coverage remains incomplete because this adapter has no proven pagination/completion marker.
+- **Tickerbot:** Durable cursor did not advance during run #29. Market scan remains partial; no complete-market claim is made.
+- **GDELT:** The previous HTTP 429 remains recorded. Run #29 did not call the live endpoint; GDELT was preserved and not retried.
+- **Outbox audit:** Pending acceptance records remain isolated. The workflow did not deliver or broadcast the backlog. The external Make/Brevo/Gmail/ChatGPT route and receiver-side deduplication are not end-to-end verified.
+- **Regression:** A clean checkout at commit `a72d973` ran the complete local suite: **233 passed, 0 failed**.
+- **Status:** Development and isolated acceptance only. No production collectors, recurring workloads, paid services, or trading were activated. Independent-news continuation, complete Tickerbot pagination, and controlled real-route delivery remain unfinished.
