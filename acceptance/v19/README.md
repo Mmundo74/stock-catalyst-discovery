@@ -39,13 +39,20 @@ given an invented event date or admitted as catalyst events. Dated evidence, qua
 source health, and the import checkpoint commit atomically. No notification outbox rows
 are created.
 
-Hosted runs #36–#39 exposed and corrected missing event-time quarantine and a column/value
-count error in the quarantine insert. Hosted run #40 (`41402652998`) passed against
-development commit `073c39582e7450c4b23507d2a3a89d6b97428e0f`: it committed 2,193
-shared-evidence records/revisions, retained 3,895 undated committee-assignment rows in
-quarantine, advanced the shared import checkpoint, and created no alerts. Its result
-remains partial: SEC collectors were excluded, four of the selected 15 sources reported
-errors or missing event timestamps, and only 11 selected sources were healthy.
+Hosted runs #36–#39 exposed and corrected missing event-time quarantine, a column/value
+count error in the quarantine insert, and the FINRA source-key collision. Run #40
+(`41402652998`) passed against commit `073c39582e7450c4b23507d2a3a89d6b97428e0f`
+using durable native results: 2,193 records/revisions were committed, 3,895 undated
+committee assignments were quarantined, the shared checkpoint advanced, and the bridge
+created no outbox rows. Run #41 (`41403935742`) passed against the exact published FINRA
+fix commit `5b735684e0bff0492eb94fdf642c3835f8a7dd4a`. The upstream FINRA parser suite
+passed 5/5; a bounded live FINRA sync parsed and upserted 12,304/12,304 rows. The bridge
+committed 14,593 records across all 18 datasets and advanced its checkpoint; 3,895
+undated committee assignments remain quarantined, and the bridge created no outbox rows.
+Run #41 remains partial: 15 of 17 sources were observed, SEC EDGAR sources were excluded,
+Senate eFD returned HTTP 403, and 3,895 Congress legislator rows lacked reliable event
+timestamps. Parser coverage metadata is unknown for the pinned source results, so neither
+run proves comprehensive catalog coverage.
 
 ## FINRA reporting-facility identity
 
@@ -56,7 +63,10 @@ The existing manual workflow applies the small reviewed patch in its ephemeral p
 checkout, leaves the LuxAlgo source commit unchanged, and runs that upstream parser's
 targeted Vitest suite before building. The patch retains both file and reporting-facility
 codes in the row identity; it does not aggregate or discard rows. Hosted ingestion of this
-correction is pending.
+correction passed the targeted upstream parser suite and bounded hosted FINRA ingestion
+in workflow run #41; 12,304 rows persisted with 12,304 unique IDs. This validates the
+tested snapshot and failure correction, not full market coverage or security-type
+classification.
 
 The manual workflow has a `reuse_existing_native_sources` input for an import-only retry.
 It accepts only fresh results for all 15 selected sources within 60 minutes, then exports
