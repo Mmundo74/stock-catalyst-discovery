@@ -1,6 +1,20 @@
 const TICKER = /^[A-Z0-9][A-Z0-9.\-^]{0,18}$/;
 const ISO = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+export const EVIDENCE_FRESHNESS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isFreshTimestamp(value, { now = new Date(), maxAgeMs = EVIDENCE_FRESHNESS_MAX_AGE_MS } = {}) {
+  if (!ISO(value)) return false;
+  const nowMs = now instanceof Date ? now.getTime() : typeof now === 'string' ? Date.parse(now) : NaN;
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(nowMs) && Number.isSafeInteger(maxAgeMs) && maxAgeMs > 0 &&
+    timestampMs <= nowMs && timestampMs >= nowMs - maxAgeMs;
+}
+
+export function isFreshEvidence(items, options = {}) {
+  return Array.isArray(items) && items.length >= 2 &&
+    items.every(item => isFreshTimestamp(item?.sourceTimestamp, options));
+}
 
 function assertEvent(event) {
   if (!event || !['government', 'news', 'market'].includes(event.engine) ||
@@ -56,7 +70,13 @@ function preserveEvidence(items) {
  * research and alert stages. It never sends notifications or mutates outbox.
  */
 export function qualifyDiscovery({ event, issuerResolution, parentRelationship = null,
-  impactAssessment = null, humanReview = null, evidence } = {}) {
+  impactAssessment = null, humanReview = null, evidence, now = new Date(),
+  maxEvidenceAgeMs = EVIDENCE_FRESHNESS_MAX_AGE_MS } = {}) {
+  const nowMs = now instanceof Date ? now.getTime() : typeof now === 'string' ? Date.parse(now) : NaN;
+  if (!Number.isFinite(nowMs) || !Number.isSafeInteger(maxEvidenceAgeMs) || maxEvidenceAgeMs <= 0) {
+    throw new TypeError('invalid_qualification_clock_or_freshness');
+  }
+  const checkedAt = new Date(nowMs);
   assertEvent(event);
   const supportingEvidence = preserveEvidence(evidence);
   const issuerCandidates = Array.isArray(issuerResolution?.candidates) ? issuerResolution.candidates : [];
@@ -72,7 +92,7 @@ export function qualifyDiscovery({ event, issuerResolution, parentRelationship =
   const parentReview = parentRelationship?.review;
   const parentReviewOK = parentReview?.approved === true &&
     typeof parentReview.reviewerId === 'string' && parentReview.reviewerId.trim() &&
-    ISO(parentReview.reviewedAt) && Date.parse(parentReview.reviewedAt) <= Date.now();
+    isFreshTimestamp(parentReview.reviewedAt, { now: checkedAt, maxAgeMs: maxEvidenceAgeMs });
   const parent = parentRelationship ? {
     childName: String(parentRelationship.childName ?? '').slice(0, 500),
     parentName: String(parentRelationship.parentName ?? '').slice(0, 500),
@@ -94,9 +114,13 @@ export function qualifyDiscovery({ event, issuerResolution, parentRelationship =
     } : null;
   const reviewed = humanReview && humanReview.approved === true &&
     typeof humanReview.reviewerId === 'string' && humanReview.reviewerId.trim() &&
-    ISO(humanReview.reviewedAt) && humanReview.reviewedAt <= new Date().toISOString();
+    ISO(humanReview.reviewedAt) && Date.parse(humanReview.reviewedAt) <= nowMs;
   const independentEvidence = isIndependentEvidence(supportingEvidence);
-  const alertEligible = Boolean(issuer && impact && reviewed && independentEvidence &&
+  const independenceReviewed = Boolean(reviewed && humanReview.independentEvidenceConfirmed === true);
+  const freshEvidence = isFreshEvidence(supportingEvidence, { now: checkedAt, maxAgeMs: maxEvidenceAgeMs });
+  const freshImpact = Boolean(impact && isFreshTimestamp(impact.assessedAt, { now: checkedAt, maxAgeMs: maxEvidenceAgeMs }));
+  const freshReview = Boolean(reviewed && isFreshTimestamp(humanReview.reviewedAt, { now: checkedAt, maxAgeMs: maxEvidenceAgeMs }));
+  const alertEligible = Boolean(issuer && impact && reviewed && independenceReviewed && independentEvidence && freshEvidence && freshImpact && freshReview &&
     parent.status !== 'requires_review' && parent.status !== 'unknown');
   return Object.freeze({
     event: Object.freeze({ engine: event.engine, source: event.source,
@@ -109,14 +133,19 @@ export function qualifyDiscovery({ event, issuerResolution, parentRelationship =
     parentRelationship: Object.freeze(parent),
     impactAssessment: impact,
     review: reviewed ? Object.freeze({ approved: true, reviewerId: humanReview.reviewerId.trim(),
-      reviewedAt: new Date(humanReview.reviewedAt).toISOString() }) : null,
+      reviewedAt: new Date(humanReview.reviewedAt).toISOString(),
+      independentEvidenceConfirmed: independenceReviewed }) : null,
     evidence: Object.freeze(supportingEvidence),
     notificationAction: 'none',
     alertEligibilityReasons: alertEligible ? [] : [
       ...(!issuer ? ['issuer_not_uniquely_cross_correlated'] : []),
       ...(!impact ? ['impact_assessment_incomplete'] : []),
+      ...(impact && !freshImpact ? ['impact_assessment_stale'] : []),
       ...(!reviewed ? ['explicit_human_review_required'] : []),
+      ...(reviewed && !freshReview ? ['human_review_stale'] : []),
       ...(!independentEvidence ? ['two_independent_evidence_items_required'] : []),
+      ...(independentEvidence && !independenceReviewed ? ['evidence_independence_review_required'] : []),
+      ...(independentEvidence && !freshEvidence ? ['source_evidence_stale_or_undated'] : []),
       ...(['requires_review', 'unknown'].includes(parent.status) ? ['parent_relationship_unresolved'] : []),
     ],
   });
