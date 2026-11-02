@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FEEDS, LUXALGO_COMMIT, addQuarantineRetryState, easternTimestampToIso, itemIdFromLink, normalizeFedItem, normalizeBoundedFeeds, feedSnapshotHash, normalizeFeedRange } from './federalreserve_source.mjs';
+import { FEEDS, LUXALGO_COMMIT, addQuarantineRetryState, easternTimestampToIso, itemIdFromLink, normalizeFedItem, normalizeBoundedFeeds, feedSnapshotHash, normalizeFeedRange, federalReserveFetchFailureEvidence } from './federalreserve_source.mjs';
 test('pins LuxAlgo commit and three public Fed feeds', () => { assert.equal(LUXALGO_COMMIT, '1ecfcca36a224d4758cc6e2e20cca216db43d5ee'); assert.equal(FEEDS.length, 3); });
 test('normalizes speech and preserves source title, timestamp, and identity', () => { const raw={d:'8/5/2026 4:05:00 PM',t:'Original title',l:'/newsevents/speech/cook20260805a.htm'}; const n=normalizeFedItem(raw,'speech',FEEDS[0].url,'2026-11-01T00:00:00.000Z'); assert.equal(n.id,'speech/cook20260805a'); assert.equal(n.title,raw.t); assert.equal(n.sourceTimestamp,raw.d); assert.equal(n.eventTime,'2026-08-05T20:05:00.000Z'); });
 test('uses IANA DST rules for summer and winter timestamps', () => { assert.equal(easternTimestampToIso('8/5/2026 4:05:00 PM'),'2026-08-05T20:05:00.000Z'); assert.equal(easternTimestampToIso('1/5/2026 4:05:00 PM'),'2026-01-05T21:05:00.000Z'); });
@@ -38,4 +38,22 @@ test('preserves malformed source item, identity, reason, and held-checkpoint imp
   assert.equal(secondAttempt[0].retryAttempt,2);
   assert.equal(secondAttempt[0].retryStatus,'pending_reprocess');
   assert.deepEqual(secondAttempt[0].rawRecord,malformed);
+});
+
+test('source fetch failure evidence identifies feed and preserves checkpoint without exposing exception text', () => {
+  const evidence = federalReserveFetchFailureEvidence({ feedUrl: FEEDS[1].url, feedIndex: 1,
+    error: new Error('feed_fetch_failed:/json/ne-testimony.json:upstream_http_503'),
+    retrievedAt: '2026-11-02T12:00:00.000Z' });
+  assert.equal(evidence.sourceKey, 'luxalgo:federalreserve');
+  assert.equal(evidence.sourceFeedUrl, FEEDS[1].url);
+  assert.equal(evidence.sourceFeedIndex, 1);
+  assert.equal(evidence.sourceIdentity, `feed:${FEEDS[1].url}`);
+  assert.equal(evidence.failureCode, 'upstream_http_503');
+  assert.equal(evidence.retryStatus, 'pending_retry');
+  assert.equal(evidence.feedsSucceededBeforeFailure, 1);
+  assert.equal(evidence.checkpointImplication, 'existing_checkpoint_unchanged');
+  assert.equal(evidence.checkpointAdvanced, false);
+  assert.equal(JSON.stringify(evidence).includes('/json/ne-testimony.json:upstream_http_503'), false);
+  assert.throws(() => federalReserveFetchFailureEvidence({ feedUrl: 'https://example.org/feed', feedIndex: 0,
+    error: new Error('x'), retrievedAt: '2026-11-02T12:00:00Z' }), /invalid_federal_reserve_fetch_failure/);
 });

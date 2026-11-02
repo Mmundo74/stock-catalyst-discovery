@@ -134,3 +134,28 @@ export function addQuarantineRetryState(quarantineRecords, previousRecords = [])
     retryStatus: 'pending_reprocess',
   }));
 }
+
+export function federalReserveFetchFailureEvidence({ feedUrl, feedIndex, error, retrievedAt }) {
+  if (!FEEDS.some(feed => feed.url === feedUrl) || !Number.isInteger(feedIndex) || feedIndex < 0 || feedIndex >= FEEDS.length ||
+      typeof retrievedAt !== 'string' || !Number.isFinite(Date.parse(retrievedAt))) {
+    throw new TypeError('invalid_federal_reserve_fetch_failure');
+  }
+  const message = typeof error?.message === 'string' ? error.message : '';
+  const http = /(?:^|:)upstream_http_(\d{3})$/.exec(message);
+  const failureCode = message === 'upstream_shape_drift' ? message
+    : http ? `upstream_http_${http[1]}`
+      : message.startsWith('feed_fetch_failed:') ? 'feed_fetch_failed'
+        : 'source_fetch_failed';
+  return {
+    sourceKey: 'luxalgo:federalreserve',
+    sourceFeedUrl: feedUrl,
+    sourceFeedIndex: feedIndex,
+    sourceIdentity: `feed:${feedUrl}`,
+    failureCode,
+    retryStatus: 'pending_retry',
+    attemptedAt: new Date(retrievedAt).toISOString(),
+    feedsSucceededBeforeFailure: feedIndex,
+    checkpointImplication: 'existing_checkpoint_unchanged',
+    checkpointAdvanced: false,
+  };
+}

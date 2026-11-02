@@ -1,7 +1,7 @@
 // Manual-only bounded ingestion for the pinned LuxAlgo Federal Reserve adapter.
 import { createHash, randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { FEEDS, addQuarantineRetryState, feedSnapshotHash, normalizeFeedRange } from './federalreserve_source.mjs';
+import { FEEDS, addQuarantineRetryState, feedSnapshotHash, normalizeFeedRange, federalReserveFetchFailureEvidence } from './federalreserve_source.mjs';
 const { Client } = pg;
 const connectionString = process.env.SUPABASE_SESSION_POOLER_URL;
 const maxItems = Number(process.env.LUXALGO_MAX_ITEMS ?? 9);
@@ -24,12 +24,20 @@ async function fetchFeed(url) {
   }
   throw new Error(`feed_fetch_failed:${new URL(url).pathname}:${lastError?.message ?? 'unknown'}`);
 }
-const feeds = [];
-for (const spec of FEEDS) { if (feeds.length) await snooze(550); feeds.push(await fetchFeed(spec.url)); }
 const client = new Client({ connectionString, connectionTimeoutMillis: 10000, application_name: 'scd-luxalgo-fed-acceptance' });
+const feeds = [];
+let transactionOpen = false, runRecorded = false, feedFailure = null;
 try {
-  await client.connect(); await client.query('begin');
+  await client.connect();
   await client.query("insert into catalyst_acceptance.pipeline_runs(run_id,engine,status,evidence) values($1,'government','started',$2)", [runId, { source_key: sourceKey, retrieved_at: retrievedAt }]);
+  runRecorded = true;
+  await client.query("insert into catalyst_acceptance.source_health(source_key,last_attempt_at,state,last_error) values($1,$2,'never_run',null) on conflict(source_key) do update set last_attempt_at=excluded.last_attempt_at", [sourceKey, retrievedAt]);
+  for (const [feedIndex, spec] of FEEDS.entries()) {
+    if (feeds.length) await snooze(550);
+    try { feeds.push(await fetchFeed(spec.url)); }
+    catch (error) { feedFailure = federalReserveFetchFailureEvidence({ feedUrl: spec.url, feedIndex, error, retrievedAt }); throw error; }
+  }
+  await client.query('begin'); transactionOpen = true;
   await client.query('insert into catalyst_acceptance.checkpoints(source_key,cursor_value,last_completed_run) values($1,$2,$3) on conflict(source_key) do nothing', [sourceKey, JSON.stringify({ version: 1, snapshot_sha256: null, next_offset: 0 }), runId]);
   const cp = await client.query('select cursor_value from catalyst_acceptance.checkpoints where source_key=$1 for update', [sourceKey]);
   const prior = JSON.parse(cp.rows[0].cursor_value), snapshotSha256 = feedSnapshotHash(feeds);
@@ -54,6 +62,7 @@ try {
   await client.query("insert into catalyst_acceptance.source_health(source_key,last_attempt_at,last_success_at,state,last_error) values($1,$2,$3,$4,$5) on conflict(source_key) do update set last_attempt_at=excluded.last_attempt_at,last_success_at=coalesce(excluded.last_success_at,catalyst_acceptance.source_health.last_success_at),state=excluded.state,last_error=excluded.last_error", [sourceKey, retrievedAt, batch.coverage.parseFailures ? null : retrievedAt, batch.coverage.parseFailures ? 'error' : 'healthy', batch.coverage.parseFailures ? `malformed_records:${batch.coverage.parseFailures}:offset:${batch.coverage.blockedOffset}` : null]);
   if (batch.coverage.parseFailures === 0) { const cursor = JSON.stringify({ version: 1, snapshot_sha256: snapshotSha256, next_offset: batch.coverage.nextOffset, records_available: batch.coverage.recordsAvailable }); await client.query("insert into catalyst_acceptance.checkpoints(source_key,cursor_value,last_completed_run) values($1,$2,$3) on conflict(source_key) do update set cursor_value=excluded.cursor_value,last_completed_run=excluded.last_completed_run,advanced_at=now()", [sourceKey, cursor, runId]); }
   await client.query('commit');
+  transactionOpen = false;
   const safeCoverage = { ...coverage, quarantineRecords: quarantineRecords.map(({ rawRecord, ...record }) => ({ ...record, rawRecordPreserved: true })) };
   console.log(JSON.stringify({ pass: batch.coverage.parseFailures === 0, run_id: runId,
     checks: { three_feeds: feeds.length === 3, bounded: selected.length <= maxItems, raw_records_preserved: true,
@@ -62,4 +71,15 @@ try {
       checkpoint_committed_after_durable_page: batch.coverage.parseFailures === 0, malformed_items_block_checkpoint: true,
       raw_discoveries_not_queued_for_alerts: true }, coverage: safeCoverage, inserted, revisions, outbox_created: 0 }));
   if (batch.coverage.parseFailures) process.exitCode = 1;
-} catch (error) { await client.query('rollback').catch(() => {}); console.error(JSON.stringify({ pass: false, error: String(error?.message ?? 'unknown').slice(0, 220) })); process.exitCode = 1; } finally { await client.end().catch(() => {}); }
+} catch {
+  if (transactionOpen) await client.query('rollback').catch(() => {});
+  const failureCode = feedFailure?.failureCode ?? 'source_pipeline_failed';
+  if (runRecorded) {
+    await client.query("update catalyst_acceptance.pipeline_runs set status='failed',completed_at=now(),evidence=$2 where run_id=$1",
+      [runId, { source_key: sourceKey, retrieved_at: retrievedAt, failure: feedFailure ?? { failureCode, retryStatus: 'pending_retry', checkpointImplication: 'existing_checkpoint_unchanged', checkpointAdvanced: false } }]).catch(() => {});
+    await client.query("insert into catalyst_acceptance.source_health(source_key,last_attempt_at,state,last_error) values($1,$2,'error',$3) on conflict(source_key) do update set last_attempt_at=excluded.last_attempt_at,state='error',last_error=excluded.last_error",
+      [sourceKey, retrievedAt, failureCode]).catch(() => {});
+  }
+  console.error(JSON.stringify({ pass: false, error_code: failureCode, checkpoint_advanced: false, failure: feedFailure }));
+  process.exitCode = 1;
+} finally { await client.end().catch(() => {}); }
