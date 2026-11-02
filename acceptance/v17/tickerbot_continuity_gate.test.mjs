@@ -88,3 +88,10 @@ test('a terminal page can close pagination but does not imply complete market or
   assert.equal(result.sourceComplete, false);
   assert.equal(result.marketCoverage, 'partial_or_unproven');
 });
+
+test('fails closed when a provider explicitly reports that a cursor expired', () => {
+  const result = assess({ response: null, providerError: { status: 410, code: 'cursor_expired' } });
+  assert.equal(result.safeToAdvanceCheckpoint, false);
+  assert.ok(result.reasons.includes('provider_cursor_expired'));
+  assert.equal(result.sourceComplete, false);
+});
