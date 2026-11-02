@@ -113,6 +113,8 @@ jobs:
 
       - name: Test Tickerbot cursor continuity and fail-closed coverage
         run: node --test acceptance/v17/tickerbot_continuity_gate.test.mjs
+      - name: Test complete pinned LuxAlgo SEC and federal source catalog bridge
+        run: node --test acceptance/v19/luxalgo_catalog.test.mjs
       - name: Run bounded real LuxAlgo Federal Reserve ingestion
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
