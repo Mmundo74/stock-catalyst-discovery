@@ -24,7 +24,8 @@ class MockClient {
     if(q==='COMMIT'){this.inTransaction=false;return {rowCount:0};}
     if(q==='ROLLBACK'){this.inTransaction=false;return {rowCount:0};}
     if(q.startsWith('INSERT INTO catalyst_acceptance.evidence_quarantine') && this.failQuarantine) throw new Error('injected');
-    if(q.startsWith('INSERT INTO catalyst_acceptance.event_revisions') && this.failRevision) throw new Error('injected');
+    if(q.startsWith('INSERT INTO catalyst_acceptance.event_revisions') && this.failRevision)
+      throw Object.assign(new Error('injected'), { code: '42601', severity: 'ERROR' });
     if(q.startsWith('INSERT INTO catalyst_acceptance.event_revisions')) return {rowCount:this.duplicateRevision?0:1};
     return {rowCount:1};
   }
@@ -74,7 +75,11 @@ test('partial parser failure imports good records but records source health as e
 
 test('failed persistence rolls back and does not advance the shared import checkpoint', async () => {
   const client=new MockClient({failRevision:true});
-  await assert.rejects(persistLuxAlgoEvidenceBatch(client,makeBatch(),'lux_test_failure'),/durable_import_failed/);
+  await assert.rejects(persistLuxAlgoEvidenceBatch(client,makeBatch(),'lux_test_failure'),(error)=>{
+    assert.match(error.message,/durable_import_failed_42601/);
+    assert.equal(error.persistenceOperation,'insert_revisions');
+    return true;
+  });
   assert.ok(client.calls.some((c)=>c.sql==='ROLLBACK'));
   assert.equal(client.calls.some((c)=>c.sql.startsWith('INSERT INTO catalyst_acceptance.checkpoints')),false);
   assert.ok(client.calls.some((c)=>c.sql.includes("status='failed'")));

@@ -1,5 +1,11 @@
 # Change Log — 2026-11-02
 
+## Hosted LuxAlgo bridge retry diagnostic
+
+- Dispatched existing manual workflow run **#38** on published development commit `3443753607db9423195cf5e776cf449edc295d21`, with native-source reuse enabled and the optional ScienceDaily, News Central, and GDELT live probes disabled. The run skipped provider re-fetches, passed the database session/persistence checks, adapter suites, coverage gates, and bounded Federal Reserve ingestion. It reused 15 recent native source results; source import failed with PostgreSQL SQLSTATE `42601` during `persist_shared_evidence`. The transaction rolled back; the `luxalgo:shared-evidence-import` checkpoint remained absent, so no partial shared import was acknowledged.
+- Live DB metadata and workflow logs narrowed the failure to SQL syntax during the 2,193-record, 18-dataset import, but the existing safe diagnostic retained only the SQLSTATE. Added stable per-statement operation labels and persisted the failing operation plus SQLSTATE on the next retry, without storing or printing the database message or source payload. Added a regression asserting that a revision-write syntax error reports `insert_revisions` and preserves rollback/checkpoint behavior.
+- Focused tests pass **19/19** after the diagnostic change; the full offline regression passes **296/296**. `git diff --check` also passes. Publication and a bounded import-only hosted retry remain next. Run #38 is a failed hosted acceptance, not an end-to-end pass; no external alert or recurring job was activated.
+
 ## Bounded bridge retry without re-fetching providers
 
 - Added a manual workflow option to reuse the latest durable LuxAlgo native sync rows for all 15 allowed non-SEC sources, only when every source has a recent result within the configured 60-minute window. It skips provider requests and refuses incomplete/stale summaries; source errors and malformed-row notes are sanitized before use. This lets the hosted retry exercise export and shared persistence from the already collected native evidence without contacting the 15 endpoints again.

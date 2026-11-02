@@ -77,7 +77,10 @@ try {
   const failureCode = safeLuxAlgoBridgeFailure(error);
   if (connected) {
     await client.query("UPDATE catalyst_acceptance.pipeline_runs SET status='failed',completed_at=now(),evidence=$2::jsonb WHERE run_id=$1",
-      [runId,{source:'luxalgo_market_trackers',luxalgo_commit:LUXALGO_COMMIT,failure_code:failureCode,failure_phase:failurePhase,source_complete:false}]).catch(()=>{});
+      [runId,{source:'luxalgo_market_trackers',luxalgo_commit:LUXALGO_COMMIT,failure_code:failureCode,failure_phase:failurePhase,
+        failure_operation:typeof error?.persistenceOperation==='string'?error.persistenceOperation:null,
+        database_error_code:error?.severity&&typeof error.code==='string'&&/^[0-9A-Z]{5}$/.test(error.code)?error.code:null,
+        source_complete:false}]).catch(()=>{});
     await client.query(`INSERT INTO catalyst_acceptance.source_health(source_key,last_attempt_at,state,last_error)
       VALUES('luxalgo:shared-evidence-import',now(),'error','catalog_export_or_import_failed')
       ON CONFLICT(source_key) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,state='error',last_error=excluded.last_error`).catch(()=>{});
