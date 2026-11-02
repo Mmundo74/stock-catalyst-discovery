@@ -109,6 +109,9 @@ jobs:
         run: node acceptance/v15/sciencedaily_rss_once.mjs
       - name: Test independent GDELT DOC news adapter
         run: node --test acceptance/v16/gdelt_doc_news.test.mjs
+
+      - name: Test Tickerbot cursor continuity and fail-closed coverage
+        run: node --test acceptance/v17/tickerbot_continuity_gate.test.mjs
       - name: Run bounded live GDELT DOC ingestion (raw evidence only)
         if: ${{ inputs.probe_gdelt_live }}
         env:
