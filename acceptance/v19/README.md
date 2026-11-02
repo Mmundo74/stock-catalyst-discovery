@@ -26,8 +26,19 @@ PatentsView may require a free API key for normal collection; optional API keys 
 improve rate limits for some sources. Missing credentials or an upstream error must be
 recorded as a failed source, never counted as full coverage.
 
-This module provides an inventory, an evidence-row adapter, and a fail-closed coverage
-gate. It does not itself run LuxAlgo's collectors or establish hosted ingestion. The
-existing manual workflow currently runs only the Federal Reserve one-shot collector;
-the other LuxAlgo sources still need a hosted collection and shared-database integration
-before they can be described as active in this project.
+The existing manual-only workflow now builds this exact upstream revision, runs all 17
+implemented collectors with durable native cursors in the isolated `luxalgo_native`
+schema, exports their datasets, and transactionally replays normalized evidence into the
+existing shared event/revision tables. Federal Reserve communications reuse the existing
+collector's source key and native event IDs, preventing the same Fed item from appearing
+twice under two source identities. The bridge uses idempotent event identities and
+append-only revisions; source-health and import checkpoint updates commit atomically with
+the evidence. It creates no notification outbox rows. The manual hosted execution is not
+yet verified, so this integration must not be described as operational until that run
+passes against the exact published commit.
+
+LuxAlgo rows preserve normalized source evidence and attribution but do not necessarily
+contain the upstream HTTP response body. Its native store remains the durable source
+checkpoint. Shared import always replays full bounded snapshots, which makes a retry
+after an interrupted bridge safe and avoids advancing the import checkpoint before
+evidence is committed.

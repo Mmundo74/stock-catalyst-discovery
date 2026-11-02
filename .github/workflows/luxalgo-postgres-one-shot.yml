@@ -16,7 +16,7 @@ concurrency:
 jobs:
   acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - name: Checkout acceptance harness
         uses: actions/checkout@v4
@@ -113,14 +113,40 @@ jobs:
 
       - name: Test Tickerbot cursor continuity and fail-closed coverage
         run: node --test acceptance/v17/tickerbot_continuity_gate.test.mjs
-      - name: Test complete pinned LuxAlgo SEC and federal source catalog bridge
-        run: node --test acceptance/v19/luxalgo_catalog.test.mjs
       - name: Run bounded real LuxAlgo Federal Reserve ingestion
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
           LUXALGO_MAX_ITEMS: '9'
         run: node acceptance/v10/luxalgo_federalreserve_once.mjs
+      - name: Test complete pinned LuxAlgo SEC and federal source catalog bridge
+        run: node --test acceptance/v19/luxalgo_catalog.test.mjs acceptance/v19/luxalgo_native_persistence.test.mjs
+      - name: Install pinned LuxAlgo workspace dependencies
+        working-directory: vendor/luxalgo
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm --filter @luxalgo/market-trackers-cli build
+      - name: Run every implemented LuxAlgo source and persist its evidence
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          MARKET_TRACKERS_CONTACT: ${{ vars.MARKET_TRACKERS_CONTACT }}
+          MARKET_TRACKERS_PATENTSVIEW_KEY: ${{ secrets.MARKET_TRACKERS_PATENTSVIEW_KEY }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: |
+          set -euo pipefail
+          export MARKET_TRACKERS_DB="$(node --input-type=module -e 'const u=new URL(process.env.SUPABASE_SESSION_POOLER_URL);u.searchParams.set("options","-c search_path=luxalgo_native,catalyst_acceptance,public");process.stdout.write(u.toString())')"
+          export MARKET_TRACKERS_LOG=silent
+          node vendor/luxalgo/packages/cli/dist/index.js sync --limit 25 --allow-partial --json \
+            > "$RUNNER_TEMP/luxalgo-sync-summary.json" 2> "$RUNNER_TEMP/luxalgo-sync-stderr.log" || true
+          test -s "$RUNNER_TEMP/luxalgo-sync-summary.json"
+          node vendor/luxalgo/packages/cli/dist/index.js export --out "$RUNNER_TEMP/luxalgo-dumps" --snapshots-only --json \
+            > "$RUNNER_TEMP/luxalgo-export-summary.json" 2> "$RUNNER_TEMP/luxalgo-export-stderr.log"
+          SUPABASE_SESSION_POOLER_URL="$SUPABASE_SESSION_POOLER_URL" \
+            LUXALGO_SYNC_SUMMARY="$RUNNER_TEMP/luxalgo-sync-summary.json" \
+            LUXALGO_EXPORT_DIR="$RUNNER_TEMP/luxalgo-dumps" \
+            node acceptance/v19/luxalgo_native_once.mjs
       - name: Run bounded live GDELT DOC ingestion (raw evidence only)
         if: ${{ inputs.probe_gdelt_live }}
         env:

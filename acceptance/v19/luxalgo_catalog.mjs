@@ -75,8 +75,11 @@ export function normalizeLuxAlgoRows(dataset, rows) {
         !Number.isFinite(Date.parse(p.retrievedAt)) || typeof p.parser !== 'string' || !p.parser) {
       throw new TypeError('invalid_luxalgo_row_or_provenance');
     }
-    const source = `luxalgo:${p.source}:${dataset}`;
-    const sourceEventId = `${dataset}:${row.id}`;
+    // The repository's bounded Fed adapter already uses this source key and
+    // the same upstream IDs; sharing both identity components avoids duplicate
+    // Federal Reserve events when the native LuxAlgo collector is also run.
+    const source = dataset === 'fed-communications' ? 'luxalgo_federalreserve' : `luxalgo:${p.source}:${dataset}`;
+    const sourceEventId = dataset === 'fed-communications' ? row.id : `${dataset}:${row.id}`;
     if (seen.has(sourceEventId)) throw new TypeError('duplicate_luxalgo_row_id');
     seen.add(sourceEventId);
     const originalPayload = { luxalgo_commit: LUXALGO_COMMIT, dataset, record: row };
@@ -104,9 +107,12 @@ export function assessLuxAlgoCoverage(results) {
     (byId.get(id).implemented !== true || byId.get(id).error || byId.get(id).ok !== true));
   const coverageUnverifiedSources = LUXALGO_SOURCES.filter((id) => byId.has(id) &&
     byId.get(id).coverageComplete !== true);
+  const successfulSources = LUXALGO_SOURCES.filter((id) => byId.has(id) && byId.get(id).implemented === true &&
+    !byId.get(id).error && byId.get(id).ok === true);
   return {
     luxalgoCommit: LUXALGO_COMMIT, expectedSources: LUXALGO_SOURCES.length,
     observedSources: byId.size, expectedDatasets: Object.keys(LUXALGO_DATASETS).length,
+    successfulSourceCount: successfulSources.length,
     missingSources, failedSources, coverageUnverifiedSources,
     allSourcesSucceeded: missingSources.length === 0 && failedSources.length === 0,
     // Upstream sync success alone does not prove a complete historical/source scan.

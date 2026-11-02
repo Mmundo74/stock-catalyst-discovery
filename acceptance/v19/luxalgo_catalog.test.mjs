@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LUXALGO_COMMIT, LUXALGO_DATASETS, LUXALGO_SOURCES, assessLuxAlgoCoverage, normalizeLuxAlgoRows } from './luxalgo_catalog.mjs';
+import { LUXALGO_EXPORT_DIRS, buildLuxAlgoEvidenceBatch, luxAlgoDatabaseUrl } from './luxalgo_native_bridge.mjs';
 
 test('inventory covers every implemented source and dataset in the pinned LuxAlgo release', () => {
   assert.equal(LUXALGO_COMMIT, '1ecfcca36a224d4758cc6e2e20cca216db43d5ee');
@@ -62,7 +63,7 @@ test('all 18 exported datasets normalize with their declared source provenance',
       provenance: { source: sources[0], sourceUrl: 'https://source.gov/record',
         retrievedAt: '2026-11-02T01:00:00Z', parser: 'fixture@1', confidence: 1, needsReview: false } };
     const [event] = normalizeLuxAlgoRows(dataset, [row]);
-    assert.equal(event.source, `luxalgo:${sources[0]}:${dataset}`);
+    assert.equal(event.source, dataset === 'fed-communications' ? 'luxalgo_federalreserve' : `luxalgo:${sources[0]}:${dataset}`);
     assert.equal(event.engine, 'government');
     assert.deepEqual(event.sourcePayload.record, row);
     assert.equal(event.observedAt, '2026-11-02T01:00:00.000Z');
@@ -70,4 +71,47 @@ test('all 18 exported datasets normalize with their declared source provenance',
   const [fec] = normalizeLuxAlgoRows('fec-candidates', [{ id: 'cand:2026', cycle: 2026, name: 'Candidate',
     provenance: { source: 'fec', sourceUrl: 'https://fec.gov/record', retrievedAt: '2026-11-02T01:00:00Z', parser: 'fec@1' } }]);
   assert.equal(fec.eventTime, '2026-01-01T00:00:00.000Z');
+  const [fed] = normalizeLuxAlgoRows('fed-communications', [{ id:'speech/test20261102a', title:'Fed communication',
+    provenance:{source:'federalreserve',sourceUrl:'https://www.federalreserve.gov/newsevents/speech/test20261102a.htm',
+      retrievedAt:'2026-11-02T01:00:00Z',parser:'fed@1'} }]);
+  assert.equal(fed.source,'luxalgo_federalreserve');
+  assert.equal(fed.sourceEventId,'speech/test20261102a');
+});
+
+test('native evidence bridge inventories every dataset and imports full snapshots without claiming completeness', () => {
+  assert.equal(Object.keys(LUXALGO_EXPORT_DIRS).length, 18);
+  const syncSummary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({ source, implemented: true })) };
+  const datasetRows = Object.fromEntries(Object.entries(LUXALGO_DATASETS).map(([dataset, sources]) => [dataset, [{
+    id: `row-${dataset}`, title: dataset, provenance: { source: sources[0],
+      sourceUrl: 'https://example.gov/record', retrievedAt: '2026-11-02T00:00:00Z', parser: 'fixture@1' },
+  }]]));
+  const batch = buildLuxAlgoEvidenceBatch(syncSummary, datasetRows);
+  assert.equal(batch.records.length, 18);
+  assert.equal(batch.coverage.allSourcesSucceeded, true);
+  assert.equal(batch.coverage.allDatasetsExported, true);
+  assert.deepEqual(batch.coverage.missingDatasets, []);
+  assert.equal(batch.coverage.sourceComplete, false);
+  assert.equal(batch.coverage.coverageComplete, false);
+  assert.equal(batch.coverage.failedSources.length, 0);
+});
+
+test('native bridge records source errors and refuses false completeness on partial exports', () => {
+  const summary = { ok: true, results: LUXALGO_SOURCES.map((source, i) => ({ source, implemented: true,
+    ...(i === 0 ? { error: 'HTTP 429 https://example.gov/?api_key=do-not-copy' } : {}) })) };
+  const batch = buildLuxAlgoEvidenceBatch(summary, {});
+  assert.equal(batch.coverage.failedSources.length, 1);
+  assert.equal(batch.coverage.failedSources[0], LUXALGO_SOURCES[0]);
+  assert.equal(batch.sourceResults[0].error, 'upstream_rate_limited');
+  assert.equal(JSON.stringify(batch).includes('do-not-copy'), false);
+  assert.equal(batch.coverage.allDatasetsExported, false);
+  assert.equal(batch.coverage.missingDatasets.length, 18);
+  assert.equal(batch.coverage.sourceComplete, false);
+});
+
+test('LuxAlgo Postgres client is scoped to the isolated schema per connection', () => {
+  const connection = luxAlgoDatabaseUrl('postgresql://user:pass@localhost:5432/postgres?sslmode=require');
+  const url = new URL(connection);
+  assert.equal(url.hostname, 'localhost');
+  assert.equal(url.searchParams.get('sslmode'), 'require');
+  assert.equal(url.searchParams.get('options'), '-c search_path=luxalgo_native,catalyst_acceptance,public');
 });
