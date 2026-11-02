@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LUXALGO_NON_SEC_SOURCES, buildRecentLuxAlgoSyncSummary } from './luxalgo_native_summary.mjs';
+import { LUXALGO_NON_SEC_SOURCES, LUXALGO_NON_SEC_ACTIVE_SOURCES, buildRecentLuxAlgoSyncSummary } from './luxalgo_native_summary.mjs';
 
 function rowsFor(sources = LUXALGO_NON_SEC_SOURCES) {
   return sources.map((source) => ({ source, started_at:'2026-11-02T06:30:00Z', ok:true,
@@ -37,4 +37,16 @@ test('chooses the latest row per source within the freshness window', () => {
     ok:false,error:'HTTP 429'}];
   const summary=buildRecentLuxAlgoSyncSummary(rows,{cutoffMs:Date.parse('2026-11-02T06:00:00Z')});
   assert.equal(summary.results[0].error,'HTTP 429');
+});
+test('default Senate eFD isolation does not disguise required missing-source coverage', () => {
+  assert.equal(LUXALGO_NON_SEC_SOURCES.length, 15);
+  assert.equal(LUXALGO_NON_SEC_ACTIVE_SOURCES.length, 14);
+  assert.equal(LUXALGO_NON_SEC_ACTIVE_SOURCES.includes('senate-efd'), false);
+  const summary=buildRecentLuxAlgoSyncSummary(rowsFor(LUXALGO_NON_SEC_ACTIVE_SOURCES), {
+    expectedSources:LUXALGO_NON_SEC_ACTIVE_SOURCES, cutoffMs:Date.parse('2026-11-02T06:00:00Z')
+  });
+  assert.equal(summary.ok,true, 'only the selected bounded sync is successful');
+  assert.equal(summary.results.length,14);
+  assert.equal(summary.results.some((r)=>r.source==='senate-efd'),false);
+  // Global coverage is assessed separately against all 17 required collectors.
 });

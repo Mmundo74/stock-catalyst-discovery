@@ -43,6 +43,22 @@ const DATE_FIELDS = Object.freeze({
 });
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+
+// Canonical, retrieval-time-independent hash input. All original metadata stays
+// in sourcePayload for audit; only the material-change identity excludes
+// the observation time supplied by the collector at each refetch.
+function canonicalContent(value) {
+  if (Array.isArray(value)) return value.map(canonicalContent);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalContent(value[key])]));
+  }
+  return value;
+}
+function materialFingerprint(dataset, row) {
+  const stableRow = { ...row, provenance: { ...row.provenance } };
+  delete stableRow.provenance.retrievedAt;
+  return sha256(JSON.stringify(canonicalContent({ luxalgo_commit: LUXALGO_COMMIT, dataset, record: stableRow })));
+}
 const eventTitle = (row) => {
   for (const key of ['title', 'name', 'subject', 'description', 'ticker', 'recipientName', 'clientName']) {
     if (typeof row[key] === 'string' && row[key].trim()) return row[key].trim().slice(0, 500);
@@ -88,7 +104,7 @@ export function normalizeLuxAlgoRows(dataset, rows) {
     if (seen.has(sourceEventId)) throw new TypeError('duplicate_luxalgo_row_id');
     seen.add(sourceEventId);
     const originalPayload = { luxalgo_commit: LUXALGO_COMMIT, dataset, record: row };
-    const fingerprint = sha256(JSON.stringify(originalPayload));
+    const fingerprint = materialFingerprint(dataset, row);
     return {
       engine: 'government', source, sourceEventId, originalName: eventTitle(row),
       eventTime: eventTime(dataset, row), observedAt: new Date(p.retrievedAt).toISOString(),

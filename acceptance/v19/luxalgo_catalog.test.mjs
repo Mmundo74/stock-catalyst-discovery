@@ -212,3 +212,17 @@ test('real FEC reporting end dates remain valid, but cycle-only and invalid date
   assert.equal(normalizeLuxAlgoRows('fec-candidates', [{...candidate, coverageEndDate:undefined}])[0].eventTime, null);
   assert.equal(normalizeLuxAlgoRows('fec-candidates', [{...candidate, coverageEndDate:'2026-02-30'}])[0].eventTime, null);
 });
+test('material fingerprint is stable across refetch timestamps and object key order', () => {
+  const provenance = { source:'clinicaltrials', sourceUrl:'https://clinicaltrials.gov/study/NCT00000001',
+    retrievedAt:'2026-11-02T06:00:00Z', parser:'clinicaltrials@1' };
+  const row = { id:'NCT00000001', title:'Original research', lastUpdated:'2026-10-30', provenance };
+  const [first] = normalizeLuxAlgoRows('clinical-trials',[row]);
+  const secondRow = { provenance:{ ...provenance, retrievedAt:'2026-11-02T07:00:00Z' },
+    lastUpdated:'2026-10-30', title:'Original research', id:'NCT00000001' };
+  const [second] = normalizeLuxAlgoRows('clinical-trials',[secondRow]);
+  const [changed] = normalizeLuxAlgoRows('clinical-trials',[{ ...secondRow, title:'Actual new research' }]);
+  assert.equal(first.fingerprint, second.fingerprint, 'refetch time must not create a revision');
+  assert.notEqual(first.fingerprint, changed.fingerprint, 'material title update must create a revision');
+  assert.notEqual(first.observedAt, second.observedAt);
+  assert.equal(second.sourcePayload.record.provenance.retrievedAt,'2026-11-02T07:00:00Z');
+});

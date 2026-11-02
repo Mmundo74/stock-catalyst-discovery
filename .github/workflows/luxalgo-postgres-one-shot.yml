@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      probe_senate_efd_live:
+        description: 'Re-probe Senate eFD despite documented GET /search/home/ 403 (default off)'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -134,7 +139,7 @@ jobs:
           LUXALGO_MAX_ITEMS: '9'
         run: node acceptance/v10/luxalgo_federalreserve_once.mjs
       - name: Test complete pinned LuxAlgo SEC and federal source catalog bridge
-        run: node --test acceptance/v19/luxalgo_catalog.test.mjs acceptance/v19/luxalgo_native_persistence.test.mjs
+        run: node --test acceptance/v19/luxalgo_catalog.test.mjs acceptance/v19/luxalgo_native_summary.test.mjs acceptance/v19/luxalgo_native_persistence.test.mjs
       - name: Install pinned LuxAlgo workspace dependencies
         working-directory: vendor/luxalgo
         run: |
@@ -149,6 +154,7 @@ jobs:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           MARKET_TRACKERS_CONTACT: ${{ vars.MARKET_TRACKERS_CONTACT }}
           MARKET_TRACKERS_PATENTSVIEW_KEY: ${{ secrets.MARKET_TRACKERS_PATENTSVIEW_KEY }}
+          PROBE_SENATE_EFD_LIVE: ${{ inputs.probe_senate_efd_live }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: |
           set -euo pipefail
@@ -156,8 +162,10 @@ jobs:
           export MARKET_TRACKERS_LOG=silent
           # SEC EDGAR daily and bulk sources are deliberately excluded until authorized.
           # The bridge still expects the full pinned catalog, so coverage reports them missing.
+          SOURCES='house-clerk,usaspending,lda,finra,congress-legislators,patentsview,clinicaltrials,openfda,cftc,wikimedia,govinfo,fec,govinfo-hearings,federalreserve'
+          if [ "$PROBE_SENATE_EFD_LIVE" = 'true' ]; then SOURCES="senate-efd,$SOURCES"; fi
           node vendor/luxalgo/packages/cli/dist/index.js sync \
-            --source senate-efd,house-clerk,usaspending,lda,finra,congress-legislators,patentsview,clinicaltrials,openfda,cftc,wikimedia,govinfo,fec,govinfo-hearings,federalreserve \
+            --source "$SOURCES" \
             --limit 25 --allow-partial --json \
             > "$RUNNER_TEMP/luxalgo-sync-summary.json" 2> "$RUNNER_TEMP/luxalgo-sync-stderr.log" || true
           test -s "$RUNNER_TEMP/luxalgo-sync-summary.json"
@@ -168,6 +176,7 @@ jobs:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
           LUXALGO_NATIVE_SUMMARY_MAX_AGE_MINUTES: '60'
+          LUXALGO_PROBE_SENATE_EFD_LIVE: ${{ inputs.probe_senate_efd_live }}
         run: |
           node acceptance/v19/luxalgo_native_summary_once.mjs \
             > "$RUNNER_TEMP/luxalgo-sync-summary.json"

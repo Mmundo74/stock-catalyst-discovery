@@ -3,6 +3,13 @@ import { LUXALGO_SOURCES } from './luxalgo_catalog.mjs';
 export const LUXALGO_NON_SEC_SOURCES = Object.freeze(LUXALGO_SOURCES.filter((source) =>
   source !== 'edgar' && source !== 'edgar-bulk'));
 
+// Operational selection only. Senate eFD remains in LUXALGO_SOURCES and
+// required coverage; its confirmed initial-page HTTP 403 is not retried by
+// ordinary acceptance runs. Manual opt-in can include it for a future probe.
+export const LUXALGO_NON_SEC_ACTIVE_SOURCES = Object.freeze(
+  LUXALGO_NON_SEC_SOURCES.filter((source) => source !== 'senate-efd'),
+);
+
 function safeSourceError(value) {
   const text = String(value ?? '').toLowerCase();
   if (/429|rate.limit|too many requests/.test(text)) return 'HTTP 429';

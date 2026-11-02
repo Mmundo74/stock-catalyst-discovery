@@ -3,6 +3,14 @@ Total output lines: 154
 
 # Change Log — 2026-11-02
 
+## Durable replay identity and Senate 403 request isolation (development branch)
+
+- Supabase readback confirmed a real replay defect: identical ClinicalTrials.gov records were assigned new content revisions when only the native `provenance.retrievedAt` changed. The undated committee evidence also accumulated 7,790 quarantine rows for two 3,895-row imports; all had attempt_count 1, confirming unstable quarantine fingerprints. A further revision fingerprint keyed to fetch time would generate unnecessary revisions on future replays.
+- The shared bridge now hashes canonically ordered material content **excluding only the observation-time field `record.provenance.retrievedAt`**. Full original payloads, retrieved timestamps and source URLs remain unchanged in durable evidence. A real title/content change still changes the fingerprint. Existing historical revisions and quarantine entries are preserved; the new fingerprint algorithm will introduce a one-time new revision on the first subsequent replay of previously hashed records, not a production alert.
+- The existing manual workflow now excludes `senate-efd` from ordinary provider sync by default. A new optional, default-off `probe_senate_efd_live` input includes it when deliberately requested. Native reuse uses the same 14-source active set unless explicitly opted into a Senate probe. The full 17-source catalog is **unchanged**, so the isolated Senate collector is still counted as missing in global coverage. SEC remains deferred. No anti-bot workaround or alternative automated Senate source is claimed.
+- Added regressions for material fingerprints, retrieval-time independence, selected-source Senate isolation, and invalid date/quarantine behavior. Extended the existing hosted source-normalization test step to include the recent-native-summary suite. All workflow triggers remain manual-only; no provider calls, database mutations, notifications, recurring execution or trading were performed during publication. Dedicated full Node regression and hosted acceptance remain pending.
+- Change control: Existing LuxAlgo native collector, FINRA patch, evidence tables, GitHub history, Make/Brevo/Gmail task, and all three discovery engines remain preserved. No new external service or operating cost was introduced. State: published development correction, not yet hosted-tested.
+
 ## Date-integrity regression: no year-only event timestamps (development branch)
 
 - Supabase read-only audit found **33** existing `luxalgo:lda:lobbying-filings` event rows with `event_time=2026-01-01`. The original filings contained `filingYear: 2026` and reporting quarters, **not** an exact filing day. Existing records were retained pending a separately controlled reconciliation; no production notifications were sent.
