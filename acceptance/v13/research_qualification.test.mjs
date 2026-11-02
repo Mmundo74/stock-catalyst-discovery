@@ -7,7 +7,7 @@ const evidence = [1,2].map(n => ({sourceName:`source${n}`,url:`https://example${
 const resolution = { status:'cross_correlated', candidates:[{status:'primary_source_cross_correlated',cik:'0000001001',ticker:'TEST',exchange:'Nasdaq',legal_name:'Test Public Company'}] };
 const parent = {childName:'Test Public Company',parentName:'Test Holdings',status:'verified_primary_document',sourceUrl:'https://sec.gov/Archives/filing',sourceSha256:'b'.repeat(64),transactionStatus:'completed',review:{approved:true,reviewerId:'reviewer-1',reviewedAt:'2026-11-01T10:31:00Z'}};
 const impact = {direction:'positive',rationale:'The filing reports completed approval of a material commercial launch.',assessedAt:'2026-11-01T10:30:00Z'};
-const humanReview = {approved:true,reviewerId:'reviewer-1',reviewedAt:'2026-11-01T10:31:00Z'};
+const humanReview = {approved:true,reviewerId:'reviewer-1',reviewedAt:'2026-11-01T10:31:00Z',independentEvidenceConfirmed:true};
 
 test('unverified name and ticker remain raw; no automatic alert promotion',()=>{
  const q=qualifyDiscovery({event,issuerResolution:{status:'requires_review',candidates:resolution.candidates},evidence});
@@ -43,6 +43,12 @@ test('two URLs from the same normalized publisher do not count as independent ev
  assert(q.alertEligibilityReasons.includes('two_independent_evidence_items_required'));
 });
 
+test('different hosts alone do not prove publisher independence without explicit review',()=>{
+ const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:parent,impactAssessment:impact,
+   humanReview:{...humanReview,independentEvidenceConfirmed:false},evidence});
+ assert.equal(q.alertEligible,false);assert(q.alertEligibilityReasons.includes('evidence_independence_review_required'));
+});
+
 test('missing original evidence hash or source time fails closed',()=>{
  assert.throws(()=>qualifyDiscovery({event,issuerResolution:resolution,evidence:[{...evidence[0],sha256:'bad'}]}),/invalid_supporting_evidence/);
 });
@@ -59,5 +65,38 @@ test('duplicate evidence URLs and hashes cannot satisfy independent corroboratio
 });
 test('parent status alone is insufficient without parent-specific review',()=>{
  const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:{...parent,review:null},impactAssessment:impact,humanReview,evidence});
+ assert.equal(q.alertEligible,false);assert.equal(q.parentRelationship.status,'requires_review');
+});
+
+test('old source evidence remains research-qualified but is not alert-eligible',()=>{
+ const now=new Date('2026-11-02T12:00:00Z');
+ const oldEvidence=evidence.map(item=>({...item,sourceTimestamp:'2026-10-20T12:00:00Z'}));
+ const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:parent,impactAssessment:impact,humanReview,evidence:oldEvidence,now});
+ assert.equal(q.stage,'research_qualified');assert.equal(q.alertEligible,false);
+ assert(q.alertEligibilityReasons.includes('source_evidence_stale_or_undated'));
+});
+
+test('missing source publication timestamps cannot satisfy alert freshness',()=>{
+ const now=new Date('2026-11-02T12:00:00Z');
+ const undated=evidence.map(item=>({...item,sourceTimestamp:null}));
+ const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:parent,impactAssessment:impact,humanReview,evidence:undated,now});
+ assert.equal(q.alertEligible,false);assert(q.alertEligibilityReasons.includes('source_evidence_stale_or_undated'));
+});
+
+test('stale impact assessment and human review independently block alert eligibility',()=>{
+ const now=new Date('2026-11-02T12:00:00Z');
+ const recentEvidence=evidence.map(item=>({...item,sourceTimestamp:'2026-11-02T11:00:00Z'}));
+ const staleImpact={...impact,assessedAt:'2026-10-20T12:00:00Z'};
+ const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:parent,impactAssessment:staleImpact,
+   humanReview:{...humanReview,reviewedAt:'2026-10-20T12:00:00Z'},evidence:recentEvidence,now});
+ assert.equal(q.alertEligible,false);assert(q.alertEligibilityReasons.includes('impact_assessment_stale'));
+ assert(q.alertEligibilityReasons.includes('human_review_stale'));
+});
+
+test('stale parent review must be refreshed before alert eligibility',()=>{
+ const now=new Date('2026-11-02T12:00:00Z');
+ const recentEvidence=evidence.map(item=>({...item,sourceTimestamp:'2026-11-02T11:00:00Z'}));
+ const q=qualifyDiscovery({event,issuerResolution:resolution,parentRelationship:{...parent,
+   review:{...parent.review,reviewedAt:'2026-10-20T12:00:00Z'}},impactAssessment:impact,humanReview,evidence:recentEvidence,now});
  assert.equal(q.alertEligible,false);assert.equal(q.parentRelationship.status,'requires_review');
 });
