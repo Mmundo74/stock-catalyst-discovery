@@ -22,6 +22,17 @@ function safeFailureCode(error) {
   return 'upstream_source_error';
 }
 
+function knownParseFailureHints(notes) {
+  if (!Array.isArray(notes)) return 0;
+  let count = 0;
+  for (const note of notes) {
+    if (typeof note !== 'string') continue;
+    const malformedIndexRows = /^(?:\d{4}: )?(\d+) malformed index rows skipped$/.exec(note);
+    if (malformedIndexRows) count += Number(malformedIndexRows[1]);
+  }
+  return count;
+}
+
 export function buildLuxAlgoEvidenceBatch(syncSummary, datasetRows) {
   if (!syncSummary || !Array.isArray(syncSummary.results)) throw new TypeError('invalid_luxalgo_sync_summary');
   if (!datasetRows || typeof datasetRows !== 'object' || Array.isArray(datasetRows)) throw new TypeError('luxalgo_dataset_rows_required');
@@ -33,9 +44,10 @@ export function buildLuxAlgoEvidenceBatch(syncSummary, datasetRows) {
       Number.isInteger(result.parseSucceeded) && result.parseSucceeded >= 0 &&
       result.parseSucceeded <= result.parseAttempted;
     const parseFailures = parseCoverageKnown ? result.parseAttempted - result.parseSucceeded : null;
+    const parseFailureHintCount = knownParseFailureHints(result.notes);
     const error = result.error ? safeFailureCode(result.error)
       : (hasAttempted || hasSucceeded) && !parseCoverageKnown ? 'invalid_parse_coverage_metadata'
-        : parseFailures > 0 ? 'source_parse_incomplete' : null;
+        : parseFailures > 0 || parseFailureHintCount > 0 ? 'source_parse_incomplete' : null;
     return {
       source: result.source, implemented: result.implemented === true,
       ok: !error && result.implemented === true,
@@ -44,6 +56,7 @@ export function buildLuxAlgoEvidenceBatch(syncSummary, datasetRows) {
       parseAttempted: parseCoverageKnown ? result.parseAttempted : null,
       parseSucceeded: parseCoverageKnown ? result.parseSucceeded : null,
       parseFailures,
+      parseFailureHintCount,
       rowsUpserted: Number.isInteger(result.rowsUpserted) && result.rowsUpserted >= 0 ? result.rowsUpserted : null,
       // LuxAlgo sync success does not declare full historical/provider coverage.
       coverageComplete: false,

@@ -125,6 +125,21 @@ test('native bridge marks source partial when upstream skips malformed rows', ()
   assert.equal(batch.coverage.sourceComplete, false);
 });
 
+test('native bridge flags explicitly reported malformed index-row skips even when parser counters remain zero', () => {
+  const summary = { ok: true, results: LUXALGO_SOURCES.map((source) => ({
+    source, implemented: true, parseAttempted: 0, parseSucceeded: 0,
+    ...(source === 'house-clerk' ? { notes: ['2026: 38 malformed index rows skipped'] } : {}),
+  })) };
+  const batch = buildLuxAlgoEvidenceBatch(summary, {});
+  const house = batch.sourceResults.find((result) => result.source === 'house-clerk');
+  assert.equal(house.error, 'source_parse_incomplete');
+  assert.equal(house.parseFailures, 0);
+  assert.equal(house.parseFailureHintCount, 38);
+  assert.equal(batch.coverage.parseFailureCount, 0);
+  assert.equal(batch.coverage.parseFailureHintCount, 38);
+  assert.ok(batch.coverage.failedSources.includes('house-clerk'));
+});
+
 test('native bridge rejects malformed or impossible parse coverage metadata', () => {
   for (const values of [
     { parseAttempted: -1, parseSucceeded: 0 },

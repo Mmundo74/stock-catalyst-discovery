@@ -59,6 +59,7 @@ try {
     observed_sources: batch.coverage.observedSources, expected_sources: batch.coverage.expectedSources,
     successful_sources: batch.coverage.successfulSourceCount,
     parse_failures: batch.coverage.parseFailureCount,
+    parse_failure_hints: batch.coverage.parseFailureHintCount,
     parse_coverage_unknown_sources: batch.coverage.parseCoverageUnknownSources,
     observed_datasets: batch.coverage.datasetsObserved, expected_datasets: batch.coverage.expectedDatasets,
     missing_sources: batch.coverage.missingSources, failed_sources: batch.coverage.failedSources,

@@ -111,6 +111,10 @@ export function assessLuxAlgoCoverage(results) {
     const count = byId.get(id)?.parseFailures;
     return total + (Number.isInteger(count) && count >= 0 ? count : 0);
   }, 0);
+  const parseFailureHintCount = LUXALGO_SOURCES.reduce((total, id) => {
+    const count = byId.get(id)?.parseFailureHintCount;
+    return total + (Number.isInteger(count) && count >= 0 ? count : 0);
+  }, 0);
   const coverageUnverifiedSources = LUXALGO_SOURCES.filter((id) => byId.has(id) &&
     byId.get(id).coverageComplete !== true);
   const successfulSources = LUXALGO_SOURCES.filter((id) => byId.has(id) && byId.get(id).implemented === true &&
@@ -119,7 +123,7 @@ export function assessLuxAlgoCoverage(results) {
     luxalgoCommit: LUXALGO_COMMIT, expectedSources: LUXALGO_SOURCES.length,
     observedSources: byId.size, expectedDatasets: Object.keys(LUXALGO_DATASETS).length,
     successfulSourceCount: successfulSources.length,
-    parseFailureCount, parseCoverageUnknownSources,
+    parseFailureCount, parseFailureHintCount, parseCoverageUnknownSources,
     missingSources, failedSources, coverageUnverifiedSources,
     allSourcesSucceeded: missingSources.length === 0 && failedSources.length === 0,
     // Upstream sync success alone does not prove a complete historical/source scan.

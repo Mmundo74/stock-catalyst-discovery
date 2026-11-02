@@ -43,7 +43,9 @@ Source results also carry the upstream parser counters. A source with
 `invalid_parse_coverage_metadata`. Older result formats that omit both counters are
 marked parse-coverage-unknown, not treated as proof of completeness. Successfully parsed
 rows from a partial source remain eligible for durable evidence import, with that
-source's health marked partial/error.
+source's health marked error. The bridge also recognizes the pinned House Clerk
+collector's explicit `malformed index rows skipped` note, which its aggregate parser
+counters do not include, and records that count separately as a parse-failure hint.
 
 LuxAlgo rows preserve normalized source evidence and attribution but do not necessarily
 contain the upstream HTTP response body. Its native store remains the durable source
