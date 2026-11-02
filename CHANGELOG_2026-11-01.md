@@ -324,3 +324,13 @@
 - **Outbox audit:** Pending acceptance records remain isolated. The workflow did not deliver or broadcast the backlog. The external Make/Brevo/Gmail/ChatGPT route and receiver-side deduplication are not end-to-end verified.
 - **Regression:** A clean checkout at commit `a72d973` ran the complete local suite: **233 passed, 0 failed**.
 - **Status:** Development and isolated acceptance only. No production collectors, recurring workloads, paid services, or trading were activated. Independent-news continuation, complete Tickerbot pagination, and controlled real-route delivery remain unfinished.
+
+
+## Tickerbot continuity gate and provider drift check — 2026-11-02
+
+- Added `acceptance/v17/tickerbot_continuity_gate.mjs` and nine regression tests. Continuation requires matching saved cursor, committed prior run, query scope, pinned as-of, stable page-count and coverage evidence, advancing cursor, and no provider cursor error or historical revision. The gate never reports complete market coverage; missing signal values remain unknown.
+- A bounded live request using the actual Supabase cursor, saved query, and pinned as-of was accepted by Tickerbot. Its page evidence differed from the saved run (scope 16,008 vs 16,030; changed NULL counts) and `_meta.history_revised_at` was populated. The gate rejects this drift. No page was persisted and no checkpoint advanced. Cursor expiry semantics remain undocumented. The saved scan remains partial.
+- Added the V17 test to the existing `workflow_dispatch`-only workflow on `ubuntu-latest`; no trigger, schedule, or collector was added. Preserved V11 interfaces and existing engines.
+- News-source review retained Exa, ScienceDaily, and GDELT. Wikinews is read-only since May 4, 2026; The Conversation’s terms do not establish free systematic commercial reuse for this investment use. No alternative feed was integrated without clear permitted continuity and free-use terms. GDELT live requests remain disabled after HTTP 429.
+- Offline tests: V17 targeted suite **9 passed, 0 failed**; full local suite **242 passed, 0 failed**; `git diff --check` passed. Hosted workflow and post-run checkpoint readback are pending. No notification route was called; acceptance backlog remains unbroadcast.
+- Status: implemented and offline-tested; Tickerbot live pagination is not safe to resume while provider snapshot metadata drifts. Independent news remains partial. No engine or end-to-end alert service is operational.
