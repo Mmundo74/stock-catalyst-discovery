@@ -41,12 +41,21 @@ export function normalizeFedItem(raw, feedType, feedUrl, retrievedAt) {
   if(feedType===null&&raw.pt!=='Monetary Policy') return null;
   const title=typeof raw.t==='string'?raw.t.trim():'';
   if(!title) throw new Error('missing_source_title');
-  const link=typeof raw.l==='string'?raw.l.trim():'';
-  const id=itemIdFromLink(link);
+  // Some live Federal Reserve speech rows omit `l` but include `stub`, which
+  // points to the official remarks page. Keep that distinction explicit and
+  // derive a row-specific key: the same remarks page can describe multiple
+  // separately dated appearances.
+  const primaryLink=typeof raw.l==='string'?raw.l.trim():'';
+  const linkSource=primaryLink?'l':'stub';
+  const link=primaryLink||(typeof raw.stub==='string'?raw.stub.trim():'');
+  const baseId=itemIdFromLink(link);
   const sourceTimestamp=typeof raw.d==='string'?raw.d:'';
+  const id=primaryLink?baseId:`${baseId}#stub-${createHash('sha256').update(JSON.stringify({d:raw.d??null,t:raw.t??null,s:raw.s??null,lo:raw.lo??null})).digest('hex').slice(0,16)}`;
   const type=feedType??(title.startsWith('Minutes of the Federal Open Market Committee')?'minutes':title.includes('FOMC statement')?'statement':'pressRelease');
   const url=/^https?:\/\//i.test(link)?link:`https://www.federalreserve.gov${link.startsWith('/')?'':'/'}${link}`;
-  return {id,type,title,eventTime:easternTimestampToIso(sourceTimestamp),sourceTimestamp,url,feedUrl,retrievedAt,fingerprint:createHash('sha256').update(JSON.stringify(raw)).digest('hex')};
+  const parsedUrl=new URL(url);
+  if(!['www.federalreserve.gov','federalreserve.gov'].includes(parsedUrl.hostname)||parsedUrl.protocol!=='https:') throw new Error('unapproved_source_link');
+  return {id,type,title,eventTime:easternTimestampToIso(sourceTimestamp),sourceTimestamp,url,linkSource,feedUrl,retrievedAt,fingerprint:createHash('sha256').update(JSON.stringify(raw)).digest('hex')};
 }
 
 
@@ -98,7 +107,7 @@ export function normalizeFeedRange(feeds, retrievedAt, maxRecords, startOffset =
         blockedOffset = itemOffset;
         const rawFingerprint = createHash('sha256').update(JSON.stringify(raw)).digest('hex');
         let sourceEventId = null;
-        try { sourceEventId = itemIdFromLink(raw?.l); } catch {}
+        try { sourceEventId = itemIdFromLink(typeof raw?.l === 'string' && raw.l.trim() ? raw.l : raw?.stub); } catch {}
         quarantineRecords.push({
           quarantineKey: createHash('sha256').update(`${feeds[i].url}\0${rawFingerprint}`).digest('hex'),
           sourceEventId,
@@ -110,15 +119,37 @@ export function normalizeFeedRange(feeds, retrievedAt, maxRecords, startOffset =
           failureReason: typeof error?.message === 'string' && /^[a-z0-9_]{1,100}$/.test(error.message)
             ? error.message : 'source_item_normalization_failed',
           retryStatus: 'pending_reprocess',
-          checkpointImplication: 'held_at_blocked_source_offset',
+          checkpointImplication: 'advance_only_after_quarantine_is_durable',
           rawRecord: raw,
         });
       }
     }
     if (processed >= maxRecords || blockedOffset !== null) break;
   }
-  const nextOffset = blockedOffset === null ? startOffset + processed : blockedOffset;
+  // The quarantined item is part of the durable page. The caller may advance
+  // exactly past it only after the raw item and failure evidence commit in the
+  // same transaction as this checkpoint; source completeness remains false.
+  const nextOffset = blockedOffset === null ? startOffset + processed : blockedOffset + 1;
   return { records, quarantineRecords, coverage: { recordsAvailable: available, recordsInScopeAvailable: inScopeAvailable, recordsProcessed: processed, recordsSelected: records.length, recordsOutOfScopeProcessed: outOfScopeProcessed, parseFailures, blockedOffset, startOffset, nextOffset, complete: nextOffset === available && parseFailures === 0 } };
+}
+
+export function canAdvanceFedCheckpoint(coverage, quarantineRecords) {
+  if (!coverage || !Number.isInteger(coverage.recordsAvailable) || coverage.recordsAvailable < 0 ||
+      !Number.isInteger(coverage.startOffset) || coverage.startOffset < 0 || coverage.startOffset > coverage.recordsAvailable ||
+      !Number.isInteger(coverage.nextOffset) || coverage.nextOffset < coverage.startOffset || coverage.nextOffset > coverage.recordsAvailable ||
+      !Number.isInteger(coverage.recordsProcessed) || coverage.recordsProcessed < 0 ||
+      !Number.isInteger(coverage.parseFailures) || coverage.parseFailures < 0 || !Array.isArray(quarantineRecords) ||
+      quarantineRecords.length !== coverage.parseFailures) return false;
+  const pageMatchesCursor = coverage.nextOffset === coverage.startOffset + coverage.recordsProcessed;
+  const quarantineIsDurable = quarantineRecords.every(item => item &&
+    item.checkpointImplication === 'advance_only_after_quarantine_is_durable' && item.rawRecord !== undefined);
+  const quarantineMatchesBlockedRow = coverage.parseFailures === 1 && Number.isInteger(coverage.blockedOffset) &&
+    coverage.nextOffset === coverage.blockedOffset + 1 && coverage.recordsProcessed === coverage.blockedOffset - coverage.startOffset + 1 &&
+    quarantineRecords[0]?.sourceOffset === coverage.blockedOffset;
+  const emptyTerminalPage = coverage.recordsProcessed === 0 && coverage.startOffset === coverage.nextOffset &&
+    coverage.startOffset === coverage.recordsAvailable && coverage.parseFailures === 0;
+  return emptyTerminalPage || (coverage.recordsProcessed > 0 && pageMatchesCursor &&
+    (coverage.parseFailures === 0 ? coverage.blockedOffset === null && quarantineRecords.length === 0 : quarantineMatchesBlockedRow && quarantineIsDurable));
 }
 
 export function addQuarantineRetryState(quarantineRecords, previousRecords = []) {
