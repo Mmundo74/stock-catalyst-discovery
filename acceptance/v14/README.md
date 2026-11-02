@@ -1,1 +1,3 @@
 Version 14 adds a controlled notification delivery adapter. Live Make delivery is opt-in only; no endpoint or production alert is configured by this package.
+
+The isolated adapter tests now simulate a receiver-side idempotency ledger. They commit a message, drop the first acknowledgment, retry with the same key and body, and assert one receiver record plus sender-side acknowledgment after the duplicate receipt. A changed body under the same key returns a conflict. This verifies the retry contract in a mock receiver; it does not verify that the user's Make/Brevo/Gmail/ChatGPT route implements durable receiver deduplication or exposes an acknowledgment to the sender.

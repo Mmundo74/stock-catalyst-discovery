@@ -84,3 +84,35 @@ test('persisted unqualified candidate is blocked without network delivery',async
   assert.deepEqual(result,{delivered:false,mode:'blocked',reason:'qualification_not_alert_eligible'});assert.equal(calls.length,3);assert.match(calls[2].sql,/SET state=\$3/);assert.equal(calls[2].args[2],'failed');
  } finally {if(prior===undefined)delete process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;else process.env.SCD_NOTIFICATION_DELIVERY_ENABLED=prior;}
 });
+
+test('receiver idempotency survives lost acknowledgement and sender lease retry in isolation',async()=>{
+ const prior=process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;process.env.SCD_NOTIFICATION_DELIVERY_ENABLED='true';
+ const ledger=new Map();let posts=0;let loseFirstAcknowledgement=true;let sentAcknowledgements=0;
+ const receiver=async(_url,options)=>{
+  posts++;const key=options.headers['idempotency-key'];const body=JSON.parse(options.body);const digest=hash(options.body);
+  const old=ledger.get(key);
+  if(old&&old.digest!==digest)return {ok:false,status:409};
+  if(!old)ledger.set(key,{digest,body,committedAt:'mock-receiver-commit'});
+  if(loseFirstAcknowledgement){loseFirstAcknowledgement=false;throw new Error('receiver_ack_connection_lost');}
+  return {ok:true,status:old?200:202};
+ };
+ const client={query:async(sql)=>{
+  if(sql.includes('FROM catalyst_acceptance.notification_outbox'))return {rowCount:1,rows:[{ok:1}]};
+  if(sql.includes('FROM catalyst_acceptance.research_qualifications'))return {rowCount:1,rows:[qualification()]};
+  if(sql.includes("SET state='sent'")){sentAcknowledgements++;return {rowCount:1,rows:[]};}
+  if(sql.includes('SET state=$3'))return {rowCount:1,rows:[]};
+  throw new Error('unexpected_query');
+ }};
+ const token='c9bf9e57-1685-4c89-bafb-ff5af830be8a';
+ const leased={...item,claim_token:token,lease_expires_at:new Date(Date.now()+60000),payload:{...item}};
+ try{
+  await assert.rejects(dispatchClaimedOutboxItem({client,item:leased,workerToken:token,endpoint:'https://receiver.example.test/make',enabled:true,fetchImpl:receiver}),/receiver_ack_connection_lost/);
+  assert.equal(ledger.size,1);assert.equal(sentAcknowledgements,0);
+  const retry=await dispatchClaimedOutboxItem({client,item:leased,workerToken:token,endpoint:'https://receiver.example.test/make',enabled:true,fetchImpl:receiver});
+  assert.equal(retry.delivered,true);assert.equal(retry.receiverStatus,200);assert.equal(posts,2);
+  assert.equal(ledger.size,1);assert.equal(sentAcknowledgements,1);
+  const changed=JSON.stringify({...ledger.get(item.idempotency_key).body,event:{...ledger.get(item.idempotency_key).body.event,fingerprint:hash('different')}});
+  const conflict=await receiver('https://receiver.example.test/make',{headers:{'idempotency-key':item.idempotency_key},body:changed});
+  assert.equal(conflict.status,409);assert.equal(ledger.size,1);
+ }finally{if(prior===undefined)delete process.env.SCD_NOTIFICATION_DELIVERY_ENABLED;else process.env.SCD_NOTIFICATION_DELIVERY_ENABLED=prior;}
+});

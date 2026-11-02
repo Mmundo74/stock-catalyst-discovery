@@ -107,6 +107,13 @@ jobs:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
         run: node acceptance/v15/sciencedaily_rss_once.mjs
+      - name: Test bounded independent News Central API collector
+        run: node --test acceptance/v18/news_central_api.test.mjs
+      - name: Run bounded live News Central business-news ingestion
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: node acceptance/v18/news_central_once.mjs
       - name: Test independent GDELT DOC news adapter
         run: node --test acceptance/v16/gdelt_doc_news.test.mjs
 
