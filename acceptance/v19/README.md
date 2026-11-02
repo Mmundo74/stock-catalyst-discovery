@@ -45,6 +45,11 @@ identified PostgreSQL SQLSTATE 23502 during `persist_shared_evidence`. The quara
 path is implemented and the additive migration is applied, but its hosted retry is still
 required before the integrated bridge can be called working.
 
+The manual workflow has a `reuse_existing_native_sources` input for an import-only retry.
+It accepts only fresh results for all 15 selected sources within 60 minutes, then exports
+the durable native store without re-contacting those providers. ScienceDaily, News
+Central, and GDELT live probes are independently opt-in; their offline tests still run.
+
 Source results also carry the upstream parser counters. A source with
 `parseAttempted != parseSucceeded` is recorded as failed with
 `source_parse_incomplete`; malformed or one-sided counter metadata fails as

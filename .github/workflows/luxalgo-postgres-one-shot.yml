@@ -8,6 +8,16 @@ on:
         required: false
         type: boolean
         default: false
+      probe_independent_news_live:
+        description: 'Run bounded live ScienceDaily and News Central ingestions (default off)'
+        required: false
+        type: boolean
+        default: false
+      reuse_existing_native_sources:
+        description: 'Reuse recent durable LuxAlgo native syncs and skip provider requests (default off)'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -97,6 +107,7 @@ jobs:
       - name: Test independent ScienceDaily RSS source adapter
         run: node --test acceptance/v15/sciencedaily_rss.test.mjs
       - name: Run bounded live ScienceDaily RSS snapshot ingestion
+        if: ${{ inputs.probe_independent_news_live }}
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
@@ -104,6 +115,7 @@ jobs:
       - name: Test bounded independent News Central API collector
         run: node --test acceptance/v18/news_central_api.test.mjs
       - name: Run bounded live News Central all-section ingestion
+        if: ${{ inputs.probe_independent_news_live }}
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
@@ -128,7 +140,8 @@ jobs:
           corepack prepare pnpm@10.33.0 --activate
           pnpm install --frozen-lockfile
           pnpm --filter @luxalgo/market-trackers-cli build
-      - name: Run implemented non-SEC LuxAlgo sources and persist their evidence
+      - name: Run implemented non-SEC LuxAlgo sources
+        if: ${{ !inputs.reuse_existing_native_sources }}
         env:
           SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
           MARKET_TRACKERS_CONTACT: ${{ vars.MARKET_TRACKERS_CONTACT }}
@@ -145,6 +158,26 @@ jobs:
             --limit 25 --allow-partial --json \
             > "$RUNNER_TEMP/luxalgo-sync-summary.json" 2> "$RUNNER_TEMP/luxalgo-sync-stderr.log" || true
           test -s "$RUNNER_TEMP/luxalgo-sync-summary.json"
+
+      - name: Reuse recent durable LuxAlgo source results without provider requests
+        if: ${{ inputs.reuse_existing_native_sources }}
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+          LUXALGO_NATIVE_SUMMARY_MAX_AGE_MINUTES: '60'
+        run: |
+          node acceptance/v19/luxalgo_native_summary_once.mjs \
+            > "$RUNNER_TEMP/luxalgo-sync-summary.json"
+          test -s "$RUNNER_TEMP/luxalgo-sync-summary.json"
+
+      - name: Export LuxAlgo native snapshots and persist shared evidence
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-root-ca.crt
+        run: |
+          set -euo pipefail
+          export MARKET_TRACKERS_DB="$(node --input-type=module -e 'const u=new URL(process.env.SUPABASE_SESSION_POOLER_URL);u.searchParams.set("options","-c search_path=luxalgo_native,catalyst_acceptance,public");process.stdout.write(u.toString())')"
+          export MARKET_TRACKERS_LOG=silent
           node vendor/luxalgo/packages/cli/dist/index.js export --out "$RUNNER_TEMP/luxalgo-dumps" --snapshots-only --json \
             > "$RUNNER_TEMP/luxalgo-export-summary.json" 2> "$RUNNER_TEMP/luxalgo-export-stderr.log"
           SUPABASE_SESSION_POOLER_URL="$SUPABASE_SESSION_POOLER_URL" \

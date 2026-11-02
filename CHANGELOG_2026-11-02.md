@@ -1,5 +1,11 @@
 # Change Log — 2026-11-02
 
+## Bounded bridge retry without re-fetching providers
+
+- Added a manual workflow option to reuse the latest durable LuxAlgo native sync rows for all 15 allowed non-SEC sources, only when every source has a recent result within the configured 60-minute window. It skips provider requests and refuses incomplete/stale summaries; source errors and malformed-row notes are sanitized before use. This lets the hosted retry exercise export and shared persistence from the already collected native evidence without contacting the 15 endpoints again.
+- Live ScienceDaily, News Central, and GDELT probes are independently opt-in; offline adapter tests still run. The separate bounded Federal Reserve workflow check remains enabled.
+- New native-summary freshness, completeness, error-sanitization tests pass 4/4; LuxAlgo focused suite passes 25/25. The full offline regression passes **296/296**. Workflow YAML parsed successfully. Read-only Supabase verification finds fresh native sync rows for all 15 allowed non-SEC sources (latest at 06:35 UTC, within 60 minutes), so the hosted reuse retry is ready; it is still pending.
+
 ## Preserve LuxAlgo rows without event timestamps
 
 - Hosted run #37 reported safe PostgreSQL SQLSTATE `23502` during `persist_shared_evidence`. The existing `catalyst_acceptance.events.event_time` is `NOT NULL`; upstream snapshots include records without a source event timestamp, so the bridge tried to insert `NULL` and rolled back the import.
