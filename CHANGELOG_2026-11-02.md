@@ -3,6 +3,11 @@ Total output lines: 154
 
 # Change Log — 2026-11-02
 
+## Updated legacy fixture for strict date integrity (development)
+
+- Initial isolated execution of the published catalog and native-summary suites revealed a real stale test expectation: the existing all-dataset fixture still expected 18 dated events from 18 exports, despite the required year-only lobbying quarantine. Corrected it to give FEC a real `coverageEndDate` and require **17 dated records plus one quarantined, undated LDA record**, with LDA source health marked incomplete.
+- The separate `URL is not defined` result occurred in the isolated JavaScript runner, which lacks Node's built-in WHATWG URL global; it is not a demonstrated Node.js regression. The published source and workflow remain unchanged. Full native Node regression and bounded hosted execution are still pending.
+
 ## Durable replay identity and Senate 403 request isolation (development branch)
 
 - Supabase readback confirmed a real replay defect: identical ClinicalTrials.gov records were assigned new content revisions when only the native `provenance.retrievedAt` changed. The undated committee evidence also accumulated 7,790 quarantine rows for two 3,895-row imports; all had attempt_count 1, confirming unstable quarantine fingerprints. A further revision fingerprint keyed to fetch time would generate unnecessary revisions on future replays.

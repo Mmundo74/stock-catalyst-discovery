@@ -86,7 +86,7 @@ test('native evidence bridge inventories every dataset and imports full snapshot
     'gov-contracts':['actionDate'], 'gov-grants':['actionDate'], 'lobbying-filings':['filingYear'],
     'short-volume':['date'], 'committee-assignments':['effectiveDate'], patents:['grantDate'],
     'clinical-trials':['lastUpdated'], 'fda-approvals':['statusDate'], 'cot-reports':['reportDate'],
-    'wiki-pageviews':['day'], bills:['latestActionDate'], 'fec-candidates':['cycle'],
+    'wiki-pageviews':['day'], bills:['latestActionDate'], 'fec-candidates':['coverageEndDate'],
     'fec-contributions':['date'], 'congress-hearings':['heldDate'], 'fed-communications':['date'],
   };
   const datasetRows = Object.fromEntries(Object.entries(LUXALGO_DATASETS).map(([dataset, sources]) => [dataset, [{
@@ -96,8 +96,11 @@ test('native evidence bridge inventories every dataset and imports full snapshot
       ['filingYear','cycle'].includes(field) ? '2026' : '2026-11-02'])) ,
   }]]));
   const batch = buildLuxAlgoEvidenceBatch(syncSummary, datasetRows);
-  assert.equal(batch.records.length, 18);
-  assert.equal(batch.coverage.allSourcesSucceeded, true);
+  assert.equal(batch.records.length, 17);
+  assert.equal(batch.quarantinedRecords.length, 1, 'year-only lobbying reference must remain undated');
+  assert.equal(batch.quarantinedRecords[0].source, 'luxalgo:lda:lobbying-filings');
+  assert.equal(batch.coverage.allSourcesSucceeded, false);
+  assert.deepEqual(batch.coverage.failedSources, ['lda']);
   assert.equal(batch.coverage.allDatasetsExported, true);
   assert.deepEqual(batch.coverage.missingDatasets, []);
   assert.equal(batch.coverage.sourceComplete, false);
