@@ -1,7 +1,11 @@
-Warning: truncated output (original token count: 10483)
-Total output lines: 154
-
 # Change Log — 2026-11-02
+
+## Verified correction scope and remaining historical cleanup
+
+- The source-focused regression after the latest development changes passed **21/21** published catalog and native-summary test callbacks in a JavaScript isolation harness. Test-only URL/hash shims were used; this does **not** establish native Node.js, cryptographic digest, database-write, full 296-test regression, or fresh hosted acceptance for these changes.
+- Read-only Supabase confirmation: the last import/checkpoint remains `luxalgo_catalog_06d9d40e949e4fd287c299071b7eefd4`. Historical issues remain **33** LDA events with fabricated January 1, 2026 timestamps derived from reporting years, and **7,790** existing quarantine entries from **3,895** natural identities. These rows were not deleted or modified. A later controlled reconciliation must distinguish changed fingerprint semantics from actual new evidence.
+- The previously embedded `Warning: truncated output` / `Total output lines` prefix before the changelog title was removed; the original dated entries after the title are preserved. All edits remain limited to the existing development branch. The manual workflow still excludes Senate eFD provider requests unless explicitly opted in; global coverage continues to count Senate as missing/unhealthy. No SEC ingestion, provider refetch, recurring job, alerts, paid services or trading.
+- Verification state: code corrections published and source-focused tests passed; complete native regression and bounded post-change hosted run not executed.
 
 ## Final consistency fix for date-aware fixture
 
