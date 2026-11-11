@@ -1,0 +1,27 @@
+name: News-only GitHub notification route test
+on:
+  push:
+    paths:
+      - '.github/workflows/news-issue-notification-probe.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Post one source-status-only test comment as GitHub Actions bot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const repo='Mmundo74/stock-catalyst-discovery';
+          const url='https://api.github.com/repos/'+repo+'/issues/2/comments';
+          const body='STOCK NEWS DISCOVERY — NOTIFICATION ROUTE TEST\nPosted by GitHub Actions. No market data, no new articles, no SEC files, no analysis. If a GitHub email or push arrives, it confirms this delivery route only. UTC: '+new Date().toISOString();
+          const response=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+process.env.GH_TOKEN,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'},body:JSON.stringify({body})});
+          if(response.status!==201)throw new Error('github_comment_status_'+response.status);
+          const comment=await response.json();
+          console.log(JSON.stringify({comment_created:true,comment_id:comment.id,comment_url:comment.html_url}));
+          NODE
