@@ -157,7 +157,10 @@ export async function run({dryRun=false}={}){
 }
 if(process.argv[1]&&import.meta.url===new URL('file://'+process.argv[1]).href){
  const dry=process.argv.includes('--dry-run');
- run({dryRun:dry}).then(x=>{console.log(JSON.stringify(x));}).catch(e=>{
+ const operation=process.argv.includes('--transport-probe')
+   ? publish(process.env.NEWS_NTFY_TOPIC,'NEWS DELIVERY TEST ONLY. No provider items, no collection state changes.',0).then(id=>({mode:'TRANSPORT_PROBE',ntfy_receipt_readback_verified:true,message_id:id,checkpoint_advanced:false}))
+   : run({dryRun:dry});
+ operation.then(x=>{console.log(JSON.stringify(x));}).catch(e=>{
   console.error(JSON.stringify({status:'FAILED',code:String(e.message||e).slice(0,160),checkpoint_advanced:false}));process.exitCode=1;
  });
 }
