@@ -1,0 +1,29 @@
+name: News Central read-only hosted acceptance
+on:
+  push:
+    paths:
+      - '.github/workflows/news-central-hosted-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: read
+concurrency:
+  group: independent-news-readonly-test
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: news-delivery-lightweight-2026-11-11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run 33 zero-network regression fixtures
+        run: node --test news_delivery_lightweight/collector.test.mjs
+      - name: Read public feed and checkpoint, send nothing
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node news_delivery_lightweight/collector.mjs --dry-run
