@@ -1,0 +1,30 @@
+name: Independent News Central delivery — manual acceptance
+on:
+  push:
+    paths:
+      - '.github/workflows/news-central-delivery-once.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: independent-news-central-delivery
+  cancel-in-progress: false
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: news-delivery-lightweight-2026-11-11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate independent collector regressions
+        run: node --test news_delivery_lightweight/collector.test.mjs
+      - name: Fetch feed and send only genuinely new source headlines
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEWS_NTFY_TOPIC: newsr-b6826ebca82fb20856cbd1df92019ec1f431
+        run: node news_delivery_lightweight/collector.mjs
