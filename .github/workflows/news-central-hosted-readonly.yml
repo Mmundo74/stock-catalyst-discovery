@@ -1,8 +1,5 @@
 name: News Central read-only hosted acceptance
 on:
-  push:
-    paths:
-      - '.github/workflows/news-central-hosted-readonly.yml'
   workflow_dispatch:
 permissions:
   contents: read
