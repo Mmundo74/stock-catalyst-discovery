@@ -1,9 +1,8 @@
-name: Independent News Central delivery — manual acceptance
+name: Stock News — News Central hourly source notices
 on:
-  push:
-    paths:
-      - '.github/workflows/news-central-delivery-once.yml'
   workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
 permissions:
   contents: read
   issues: write
