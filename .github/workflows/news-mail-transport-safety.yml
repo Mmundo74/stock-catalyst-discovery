@@ -1,0 +1,25 @@
+name: News mail transport — bounded configuration check
+on:
+  push:
+    paths:
+      - '.github/workflows/news-mail-transport-safety.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check email secret presence without revealing values
+        env:
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          BREVO_SENDER_EMAIL: ${{ secrets.BREVO_SENDER_EMAIL }}
+          ALERT_SMTP_HOST: ${{ secrets.ALERT_SMTP_HOST }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+        run: |
+          if [ -n "$BREVO_API_KEY" ] && [ -n "$BREVO_SENDER_EMAIL" ]; then echo "BREVO_CONFIGURED=true"; else echo "BREVO_CONFIGURED=false"; fi
+          if [ -n "$ALERT_SMTP_HOST" ] && [ -n "$ALERT_SMTP_USER" ] && [ -n "$ALERT_SMTP_PASSWORD" ] && [ -n "$ALERT_EMAIL_FROM" ]; then echo "SMTP_CONFIGURED=true"; else echo "SMTP_CONFIGURED=false"; fi
+          echo "NO_EMAIL_SENT=true"
