@@ -29,7 +29,7 @@ jobs:
             if(!history.ok)continue;
             const responseText=(await history.text()).trim();
             historyPreview=responseText.slice(0,250);
-            const lines=responseText.split('\\n').filter(Boolean).flatMap(x=>{try{return [JSON.parse(x)]}catch{return []}});
+            const lines=responseText.split('\n').filter(Boolean).flatMap(x=>{try{return [JSON.parse(x)]}catch{return []}});
             historyCount=lines.length;
             if(lines.some(x=>x.id===receipt.id)){found=true;break;}
           }
