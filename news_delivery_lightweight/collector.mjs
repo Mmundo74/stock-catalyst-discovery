@@ -114,6 +114,16 @@ async function publish(topic,msg,count){
  if(!res.ok)throw Error('NTFY_DELIVERY_HTTP_'+res.status);
  const data=await res.json();
  if(!data?.id)throw Error('NTFY_ACK_MISSING');
+ let confirmed=false;
+ for(let attempt=0;attempt<5;attempt++){
+  await new Promise(resolve=>setTimeout(resolve,800+attempt*500));
+  const check=await fetch('https://ntfy.sh/'+topic+'/json?poll=1&since=all',{headers:{'cache-control':'no-cache'},signal:AbortSignal.timeout(8000)});
+  if(!check.ok)continue;
+  const text=(await check.text()).trim();
+  const rows=text.split('\n').filter(Boolean).flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
+  if(rows.some(x=>x.id===data.id)){confirmed=true;break;}
+ }
+ if(!confirmed)throw Error('NTFY_READBACK_FAILED');
  return data.id;
 }
 export async function run({dryRun=false}={}){
