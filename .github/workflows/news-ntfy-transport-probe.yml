@@ -1,0 +1,30 @@
+name: News-only free push transport acceptance
+on:
+  push:
+    paths:
+      - '.github/workflows/news-ntfy-transport-probe.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Publish one non-news test message and verify API receipt
+        env:
+          NEWS_NTFY_TOPIC: newsr-b6826ebca82fb20856cbd1df92019ec1f431
+        run: |
+          node --input-type=module - <<'NODE'
+          const topic=process.env.NEWS_NTFY_TOPIC;
+          const response=await fetch('https://ntfy.sh/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,title:'Stock News Discovery — transport test',message:'TEST ONLY. No financial analysis, no provider news, no market triggers. This only verifies push delivery.',tags:['test_tube']})});
+          if(!response.ok)throw new Error('ntfy_http_'+response.status);
+          const receipt=await response.json();
+          if(!receipt.id)throw new Error('missing_ntfy_receipt_id');
+          const history=await fetch('https://ntfy.sh/'+topic+'/json?poll=1&since=all');
+          if(!history.ok)throw new Error('ntfy_history_http_'+history.status);
+          const lines=(await history.text()).trim().split('\n').filter(Boolean).map(JSON.parse);
+          const found=lines.some(x=>x.id===receipt.id);
+          if(!found)throw new Error('ntfy_readback_mismatch');
+          console.log(JSON.stringify({ntfy_publish:true,ntfy_readback:true,message_id:receipt.id,topic_url:'https://ntfy.sh/'+topic,kind:'TEST_ONLY'}));
+          NODE
