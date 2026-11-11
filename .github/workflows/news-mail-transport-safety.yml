@@ -1,8 +1,5 @@
 name: News mail transport — bounded configuration check
 on:
-  push:
-    paths:
-      - '.github/workflows/news-mail-transport-safety.yml'
   workflow_dispatch:
 permissions:
   contents: read
