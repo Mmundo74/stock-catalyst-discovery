@@ -1,8 +1,5 @@
 name: News-only GitHub notification route test
 on:
-  push:
-    paths:
-      - '.github/workflows/news-issue-notification-probe.yml'
   workflow_dispatch:
 permissions:
   contents: read
