@@ -21,10 +21,18 @@ jobs:
           if(!response.ok)throw new Error('ntfy_http_'+response.status);
           const receipt=await response.json();
           if(!receipt.id)throw new Error('missing_ntfy_receipt_id');
-          const history=await fetch('https://ntfy.sh/'+topic+'/json?poll=1&since=all');
-          if(!history.ok)throw new Error('ntfy_history_http_'+history.status);
-          const lines=(await history.text()).trim().split('\n').filter(Boolean).map(JSON.parse);
-          const found=lines.some(x=>x.id===receipt.id);
-          if(!found)throw new Error('ntfy_readback_mismatch');
+          let found=false,historyCount=0,historyStatus=null,historyPreview='';
+          for(let attempt=0;attempt<6;attempt++){
+            await new Promise(resolve=>setTimeout(resolve,1000+attempt*500));
+            const history=await fetch('https://ntfy.sh/'+topic+'/json?poll=1&since=all',{headers:{'cache-control':'no-cache'}});
+            historyStatus=history.status;
+            if(!history.ok)continue;
+            const responseText=(await history.text()).trim();
+            historyPreview=responseText.slice(0,250);
+            const lines=responseText.split('\\n').filter(Boolean).flatMap(x=>{try{return [JSON.parse(x)]}catch{return []}});
+            historyCount=lines.length;
+            if(lines.some(x=>x.id===receipt.id)){found=true;break;}
+          }
+          if(!found)throw new Error('ntfy_readback_mismatch_status_'+historyStatus+'_count_'+historyCount+'_preview_'+historyPreview.replace(/[^a-zA-Z0-9_:,-]/g,'_').slice(0,100));
           console.log(JSON.stringify({ntfy_publish:true,ntfy_readback:true,message_id:receipt.id,topic_url:'https://ntfy.sh/'+topic,kind:'TEST_ONLY'}));
           NODE
