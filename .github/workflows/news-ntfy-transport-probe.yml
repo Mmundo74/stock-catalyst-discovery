@@ -1,8 +1,5 @@
 name: News-only free push transport acceptance
 on:
-  push:
-    paths:
-      - '.github/workflows/news-ntfy-transport-probe.yml'
   workflow_dispatch:
 permissions:
   contents: read
