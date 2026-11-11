@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: news-delivery-lightweight-2026-11-11
+          ref: 3cf853c404f38c6e5796a53ede224086ee40c522
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
