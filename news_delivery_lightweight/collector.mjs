@@ -110,21 +110,26 @@ async function publish(topic,msg,count){
  if(!/^[a-zA-Z0-9_-]{24,96}$/.test(topic||''))throw Error('INVALID_NTFY_TOPIC');
  const payload={topic,title:'Stock News Discovery: '+count+' new source item(s)',message:msg,
   priority:2,tags:['newspaper'],click:'https://github.com/'+REPO+'/issues/'+ISSUE};
- const res=await fetch('https://ntfy.sh/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
+ const res=await fetch('https://ntfy.sh/',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
  if(!res.ok)throw Error('NTFY_DELIVERY_HTTP_'+res.status);
- const data=await res.json();
- if(!data?.id)throw Error('NTFY_ACK_MISSING');
- let confirmed=false;
- for(let attempt=0;attempt<5;attempt++){
-  await new Promise(resolve=>setTimeout(resolve,800+attempt*500));
-  const check=await fetch('https://ntfy.sh/'+topic+'/json?poll=1&since=all',{headers:{'cache-control':'no-cache'},signal:AbortSignal.timeout(8000)});
-  if(!check.ok)continue;
-  const text=(await check.text()).trim();
-  const rows=text.split('\n').filter(Boolean).flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
-  if(rows.some(x=>x.id===data.id)){confirmed=true;break;}
+ const receipt=await res.json();
+ if(!receipt?.id)throw Error('NTFY_ACK_MISSING');
+ // The anonymous ntfy cache may take time to surface a newly published receipt.
+ // Never commit the source-version checkpoint on a mere HTTP 200 acknowledgement.
+ let verified=false;
+ for(let attempt=0;attempt<6&&!verified;attempt++){
+  await new Promise(resolve=>setTimeout(resolve,1000+attempt*500));
+  const poll=await fetch('https://ntfy.sh/'+topic+'/json?poll=1&since=all',{
+   headers:{'cache-control':'no-cache'},signal:AbortSignal.timeout(12000)});
+  if(!poll.ok)continue;
+  const body=await poll.text();
+  for(const line of body.trim().split('\n')){
+   try{if(JSON.parse(line).id===receipt.id){verified=true;break;}}catch{}
+  }
  }
- if(!confirmed)throw Error('NTFY_READBACK_FAILED');
- return data.id;
+ if(!verified)throw Error('NTFY_READBACK_MISMATCH');
+ return receipt.id;
 }
 export async function run({dryRun=false}={}){
  const started=at();
