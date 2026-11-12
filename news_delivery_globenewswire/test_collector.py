@@ -94,10 +94,10 @@ class PhysOrgCollectorUnitTests(unittest.TestCase):
         self.assertIn('Original source headline',c.pack(self.parse()['items'])[0]);self.assertIn('https://www.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companiesnews/',c.pack(self.parse()['items'])[0])
     def test_41_empty_new_items_sends_nothing(self):self.assertEqual(c.pack([]),[])
     def test_42_byte_limit_splits_notices(self):
-        p=self.parse([item('a'),item('b')]);self.assertEqual(len(c.pack(p['items'],max_bytes=230)),2)
+        p=self.parse([item('a'),item('b')]);self.assertEqual(len(c.pack(p['items'],max_bytes=350)),2)
     def test_43_message_cap_stops_all_sends(self):
         p=self.parse([item('a'),item('b')]);
-        with self.assertRaisesRegex(ValueError,'NOTICE_LIMIT_EXCEEDED'):c.pack(p['items'],max_bytes=230,max_messages=1)
+        with self.assertRaisesRegex(ValueError,'NOTICE_LIMIT_EXCEEDED'):c.pack(p['items'],max_bytes=350,max_messages=1)
     def test_44_http_429_no_normalization_to_zero(self):
         err=__import__('urllib.error',fromlist=['HTTPError']).HTTPError(c.FEED_URL,429,'limit',{},None)
         with patch('urllib.request.urlopen',side_effect=err):
