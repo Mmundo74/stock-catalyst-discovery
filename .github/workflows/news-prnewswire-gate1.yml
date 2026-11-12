@@ -1,10 +1,5 @@
 name: Stock News — PR Newswire one-source acceptance (no recurrence)
 on:
-  push:
-    branches: [news-prnewswire-gate1-2026-11-12]
-    paths:
-      - 'news_prnewswire_acceptance/**'
-      - '.github/workflows/news-prnewswire-gate1.yml'
   workflow_dispatch:
 permissions:
   contents: read
