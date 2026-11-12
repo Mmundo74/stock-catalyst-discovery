@@ -124,6 +124,20 @@ class PhysOrgCollectorUnitTests(unittest.TestCase):
             o=c.run(dry_run=True);self.assertEqual(o['new_variants'],1);self.assertFalse(o['checkpoint_committed']);issue.assert_called_once();push.assert_not_called()
     def test_50_unicode_title_preserved(self):
         p=self.parse([item(title='© Biotechnology — new “result”')]);self.assertIn('© Biotechnology — new “result”',c.pack(p['items'])[0])
+    def test_51_two_variants_same_guid_not_replayed(self):
+        p=self.parse([item('a',desc='first'),item('a',desc='second')])
+        one=c.plan(p,state())
+        s=state();s['versions']=one['versions'];s['seen_variants']=one['seen_variants']
+        replay=c.plan(p,s)
+        self.assertEqual(len(one['selected']),2)
+        self.assertEqual(len(replay['selected']),0)
+    def test_52_two_old_variants_silenced_during_initial_bootstrap(self):
+        p=self.parse([item('a',desc='first',pub=DATE0),item('a',desc='second',pub=DATE0)])
+        self.assertEqual(len(c.plan(p,state())['selected']),0)
+    def test_53_history_invalid_digest_blocked(self):
+        s=state();s['versions']={'a':'0'*64};s['seen_variants']={'a':['bad']}
+        with self.assertRaisesRegex(ValueError,'ISSUE_STATE_HISTORY_INVALID'):c.state_from_issue(body(s))
+    def test_54_shared_public_notification_budget(self): self.assertEqual(c.MAX_NOTICES,2)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
