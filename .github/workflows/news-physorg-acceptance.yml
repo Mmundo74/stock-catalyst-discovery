@@ -1,0 +1,26 @@
+name: Stock News — Phys.org source acceptance (read-only)
+on:
+  push:
+    branches: [news-physorg-2026-11-12]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: read
+concurrency:
+  group: news-physorg-acceptance
+  cancel-in-progress: false
+jobs:
+  source-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test independent RSS parser and failure recovery
+        run: python -m unittest discover -s news_delivery_physorg -p 'test_*.py' -v
+      - name: Verify live feed and source-specific issue without writes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python news_delivery_physorg/collector.py --dry-run
