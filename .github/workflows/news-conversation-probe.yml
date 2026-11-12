@@ -1,0 +1,36 @@
+name: Stock News — The Conversation US Atom access probe
+on:
+  push:
+    branches: [news-conversation-2026-11-12]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test publisher-host access, XML, source item count without saving article text
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, urllib.request, urllib.error, xml.etree.ElementTree as ET, hashlib
+          feed="https://theconversation.com/us/articles.atom"
+          req=urllib.request.Request(feed,headers={"Accept":"application/atom+xml,application/xml"})
+          try:
+              with urllib.request.urlopen(req,timeout=15) as res:
+                  status=res.status;typ=res.headers.get("content-type");raw=res.read(1500001)
+          except urllib.error.HTTPError as e:
+              raise SystemExit("SOURCE_BLOCKED_HTTP_"+str(e.code))
+          if status!=200 or "xml" not in (typ or "").lower() or len(raw)>1500000:
+              raise SystemExit("SOURCE_BAD_RESPONSE")
+          root=ET.fromstring(raw)
+          ns="{http://www.w3.org/2005/Atom}"
+          if root.tag!=ns+"feed":raise SystemExit("SOURCE_NOT_ATOM")
+          items=root.findall(ns+"entry")
+          ids=[x.findtext(ns+"id") for x in items]
+          if not items or len(ids)!=len(set(ids)) or any(not s for s in ids):
+              raise SystemExit("SOURCE_INVALID_ITEMS")
+          print(json.dumps({"source_id":"news-conversation-us-atom","status":"LIVE_ACCESS_TESTED","feed_items":len(items),"raw_bytes_in_memory_only":len(raw),"sha256_in_memory_only":hashlib.sha256(raw).hexdigest(),"full_text_archived":False,"checkpoint_committed":False,"coverage":"rolling_snapshot_only"}))
+          PY
