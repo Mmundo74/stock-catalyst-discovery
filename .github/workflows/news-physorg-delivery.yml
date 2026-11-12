@@ -1,0 +1,29 @@
+name: Stock News — Phys.org source notices
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: independent-physorg-news-source-delivery
+  cancel-in-progress: false
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: da7ad2b09cf275d0ce5d2ced9005c9da7831fa5c
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate source-specific collector and failure handling
+        run: python -m unittest discover -s news_delivery_physorg -p 'test_*.py' -v
+      - name: Retrieve publisher feed, notify new source records, verify receipt and checkpoint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEWS_NTFY_TOPIC: newsr-b6826ebca82fb20856cbd1df92019ec1f431
+        run: python news_delivery_physorg/collector.py
