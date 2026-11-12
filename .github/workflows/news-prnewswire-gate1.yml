@@ -1,0 +1,35 @@
+name: Stock News — PR Newswire one-source acceptance (no recurrence)
+on:
+  push:
+    branches: [news-prnewswire-gate1-2026-11-12]
+    paths:
+      - 'news_prnewswire_acceptance/**'
+      - '.github/workflows/news-prnewswire-gate1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: news-prnewswire-gate1
+  cancel-in-progress: false
+jobs:
+  gate1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify unit, failure, duplicate and evidence logic
+        run: python news_prnewswire_acceptance/collector.py --self-test
+      - name: One bounded publisher RSS snapshot, no notification or checkpoint
+        run: python news_prnewswire_acceptance/collector.py
+      - name: Preserve original raw response, JSONL and every source status as evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: news-prnewswire-gate1-evidence
+          path: stock-news-collection/
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 6
