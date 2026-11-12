@@ -22,6 +22,8 @@ jobs:
           python-version: '3.11'
       - name: Verify unit, failure, duplicate and evidence logic
         run: python news_prnewswire_acceptance/collector.py --self-test
+      - name: Run additional replay, failure, and source-fidelity regression suite
+        run: python -m unittest discover -s news_prnewswire_acceptance -p 'test_*.py' -v
       - name: One bounded publisher RSS snapshot, no notification or checkpoint
         run: python news_prnewswire_acceptance/collector.py
       - name: Preserve original raw response, JSONL and every source status as evidence
