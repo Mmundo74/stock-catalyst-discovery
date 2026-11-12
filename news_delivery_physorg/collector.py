@@ -31,7 +31,7 @@ MAX_RAW_BYTES = 250_000
 MAX_ITEMS = 150
 MAX_ISSUE_VERSIONS = 450
 MAX_NOTICE_BYTES = 3200
-MAX_NOTICES = 8
+MAX_NOTICES = 2
 API_BASE = f"https://api.github.com/repos/{REPO}"
 
 
@@ -133,6 +133,14 @@ def state_from_issue(body: str) -> dict[str, Any]:
     versions = state.get("versions")
     if not isinstance(versions, dict) or len(versions) > MAX_ISSUE_VERSIONS or any(not isinstance(k, str) or not isinstance(v, str) or not re.fullmatch(r"[0-9a-f]{64}", v) for k, v in versions.items()):
         raise ValueError("ISSUE_STATE_VERSIONS_INVALID")
+    history = state.get("seen_variants", {})
+    if not isinstance(history, dict) or len(history) > MAX_ISSUE_VERSIONS:
+        raise ValueError("ISSUE_STATE_HISTORY_INVALID")
+    for guid, digests in history.items():
+        if (guid not in versions or not isinstance(digests, list) or not 1 <= len(digests) <= 6
+            or len(set(digests)) != len(digests)
+            or any(not isinstance(x, str) or not re.fullmatch(r"[0-9a-f]{64}", x) for x in digests)):
+            raise ValueError("ISSUE_STATE_HISTORY_INVALID")
     return state
 
 
@@ -150,28 +158,36 @@ def plan(parsed: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("WRONG_PARSED_SOURCE")
     baseline = datetime.fromisoformat(BASELINE_UTC.replace("Z", "+00:00"))
     observed = dict(state["versions"])
+    history = {key: list(digests) for key, digests in state.get("seen_variants", {}).items()}
+    prior_keys = set(observed)
     selected = []
     new_ids = set()
-    # Distinct IDs with revised variants in one RSS response are preserved in source order.
     for item in parsed["items"]:
         key = item["id"]
         digest = item["fingerprint"]
-        if observed.get(key) == digest:
+        known = set(history.get(key, []))
+        if key in observed:
+            known.add(observed[key])
+        if digest in known:
             continue
         published = datetime.fromisoformat(item["publication_utc"].replace("Z", "+00:00"))
-        is_new_since_baseline = published >= baseline
-        is_seen_revision = key in observed and observed[key] != digest
-        # Pre-baseline item is journaled but not pushed unless an observed revision occurs.
-        if is_new_since_baseline or is_seen_revision:
+        if published >= baseline or key in prior_keys:
             selected.append(item)
             new_ids.add(key)
+        older = observed.get(key)
+        chain = history.get(key, [])
+        if older is not None and older not in chain:
+            chain.append(older)
+        chain.append(digest)
+        history[key] = chain[-6:]
         observed[key] = digest
-    # Order old+new source IDs; current feed items first, then most recently inserted state entries.
     if len(observed) > MAX_ISSUE_VERSIONS:
         active_keys = list(dict.fromkeys(item["id"] for item in parsed["items"]))
         keep = active_keys + [key for key in reversed(observed) if key not in active_keys]
         observed = {key: observed[key] for key in keep[:MAX_ISSUE_VERSIONS]}
-    return {"selected": selected, "versions": observed,
+    history = {key: digests for key, digests in history.items()
+               if key in observed and len(digests) > 1}
+    return {"selected": selected, "versions": observed, "seen_variants": history,
             "provider_occurrences": parsed["source_item_occurrences"],
             "retained_variants": parsed["retained_variants"],
             "new_unique_ids": len(new_ids)}
@@ -301,6 +317,7 @@ def run(*, dry_run: bool = False) -> dict[str, Any]:
         raise RuntimeError("NTFY_TOPIC_MISSING_OR_INVALID")
     delivered = [publish(topic, note, len(decision["selected"])) for note in notices]
     updated = {**state, "versions": decision["versions"],
+               "seen_variants": decision["seen_variants"],
                "last_checked_at_utc": started, "last_status": "VERIFIED_PARTIAL",
                "last_delivery_at_utc": utc_now() if delivered else state.get("last_delivery_at_utc"),
                "delivered_batches": state.get("delivered_batches", 0) + len(delivered)}
