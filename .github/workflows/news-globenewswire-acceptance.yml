@@ -1,0 +1,26 @@
+name: Stock News — GlobeNewswire public companies source acceptance
+on:
+  push:
+    branches: [news-globenewswire-2026-11-12]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: read
+concurrency:
+  group: news-globenewswire-acceptance
+  cancel-in-progress: false
+jobs:
+  source-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test public-company RSS parser and failure handling
+        run: python -m unittest discover -s news_delivery_globenewswire -p 'test_*.py' -v
+      - name: Verify live GlobeNewswire public-company feed without state writes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python news_delivery_globenewswire/collector.py --dry-run
