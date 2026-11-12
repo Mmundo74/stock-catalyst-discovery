@@ -26,7 +26,7 @@ class SourceTests(unittest.TestCase):
     def test_source_url_untouched(self): self.assertEqual(self.parse()["rows"][0]["source_url"], "https://www.prnewswire.com/news-releases/example.html")
     def test_source_timestamp_utc(self): self.assertTrue(self.parse()["rows"][0]["source_timestamps"][0]["utc"].startswith("2026-11-12T16:35:00"))
     def test_preserve_original_time_offset(self): self.assertEqual(self.parse(rss(item(date="Thu, 12 Nov 2026 11:35:00 -0500")))["rows"][0]["source_timestamps"][0]["original"], "Thu, 12 Nov 2026 11:35:00 -0500")
-    def test_preserve_provider_name(self): self.assertEqual(self.parse(rss(item(publisher=True))["rows"][0]["publisher_original"], "PR Newswire Association LLC.")
+    def test_preserve_provider_name(self): self.assertEqual(self.parse(rss(item(publisher=True)))["rows"][0]["publisher_original"], "PR Newswire Association LLC.")
     def test_no_inferred_ticker(self): self.assertIsNone(self.parse()["rows"][0]["ticker_original"])
     def test_no_full_article_claim(self): self.assertIs(self.parse()["rows"][0]["full_text_retrieved"], False)
     def test_summary_is_feed_text_only(self): self.assertEqual(self.parse()["rows"][0]["metadata"]["description_original"], "Source summary")
